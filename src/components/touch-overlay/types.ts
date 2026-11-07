@@ -1,5 +1,9 @@
-export type ActionId =
-  'MOVE' | 'MOVE_LEFT' | 'MOVE_RIGHT' | 'MOVE_UP' | 'MOVE_DOWN' | 'ACTION_A' | 'ACTION_B' | 'PAUSE';
+import {
+  createDefaultProfile,
+  CONTROL_ACTIONS,
+  type ControlAction,
+} from '../../game/input/controlBindings';
+export type ActionId = ControlAction | 'MOVE';
 
 export const GAME_INPUT_EVENT = 'game:input';
 
@@ -25,18 +29,8 @@ export interface TouchOverlayConfig {
   forceShow?: boolean;
 }
 
-export const DEFAULT_KEY_MAP: Readonly<Partial<Record<string, ActionId>>> = {
-  ArrowLeft: 'MOVE_LEFT',
-  KeyA: 'MOVE_LEFT',
-  ArrowRight: 'MOVE_RIGHT',
-  KeyD: 'MOVE_RIGHT',
-  ArrowUp: 'MOVE_UP',
-  KeyW: 'MOVE_UP',
-  ArrowDown: 'MOVE_DOWN',
-  KeyS: 'MOVE_DOWN',
-  Space: 'ACTION_A',
-  KeyR: 'ACTION_A',
-  KeyQ: 'ACTION_B',
-  KeyJ: 'ACTION_B',
-  Escape: 'PAUSE',
-};
+export const DEFAULT_KEY_MAP: Readonly<Partial<Record<string, ActionId>>> = Object.fromEntries(
+  CONTROL_ACTIONS.flatMap((action) =>
+    createDefaultProfile().offense.keyboard[action].map((code) => [code, action]),
+  ),
+);

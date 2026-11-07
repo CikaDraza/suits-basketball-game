@@ -71,13 +71,13 @@
       "settleDuration": 0.22,
       "settleLift": 0.04,
       "overreach": 0.2,
-      "minFootGap": 0.17,
+      "minFootGap": 0.27,
       "stride": {
-        "forward": 0.6,
-        "backward": 0.46,
-        "strafe": 0.42,
-        "post": 0.4,
-        "defensive": 0.44
+        "forward": 0.72,
+        "backward": 0.58,
+        "strafe": 0.52,
+        "post": 0.45,
+        "defensive": 0.5
       },
       "lift": {
         "forward": 0.11,
@@ -86,7 +86,7 @@
         "post": 0.07,
         "defensive": 0.06
       },
-      "slowStrideScale": 0.55,
+      "slowStrideScale": 0.72,
       "bob": 0.014,
       "armSwing": 0.38,
       "velocitySmoothing": 14,
@@ -99,16 +99,16 @@
       "uprightDrop": 0.012,
       "holdDrop": 0.05,
       "defensiveDrop": 0.13,
-      "postDrop": 0.165,
+      "postDrop": 0.19,
       "braceDrop": 0.03,
       "exhaustedDrop": 0.09,
-      "holdSpread": 0.03,
-      "defensiveSpread": 0.13,
-      "postSpread": 0.08,
+      "holdSpread": 0.065,
+      "defensiveSpread": 0.16,
+      "postSpread": 0.15,
       "reachSlack": 0.985,
       "braceSway": 0.03,
       "braceLean": 0.14,
-      "movingDrop": 0.055,
+      "movingDrop": 0.07,
       "maxReachDrop": 0.1,
       "braceSpeedRatio": 0.3
     },
@@ -126,12 +126,12 @@
       "catchPhase": 0.92,
       "wristPitch": 0.12,
       "shaq": {
-        "drop": 0.14,
+        "drop": 0.27,
         "retractSide": 0.1,
         "retractForward": 0.16
       },
       "chuck": {
-        "drop": 0.13,
+        "drop": 0.25,
         "retractSide": 0.08,
         "retractForward": 0.14
       }
@@ -344,7 +344,7 @@
       "postDrop": 0.18,
       "hipSide": 0.47,
       "dribbleForward": 0.26,
-      "dribbleTop": 1.2
+      "dribbleTop": 1.3
     },
     "chuck": {
       "holdHeight": 1.37,
@@ -352,7 +352,7 @@
       "postDrop": 0.16,
       "hipSide": 0.43,
       "dribbleForward": 0.24,
-      "dribbleTop": 1.1
+      "dribbleTop": 1.2
     }
   },
   "movement": {

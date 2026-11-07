@@ -4,6 +4,7 @@ import { useInputBridge } from '../../components/touch-overlay/useInputBridge';
 import { useKeyboardInput } from '../../components/touch-overlay/useKeyboardInput';
 import { lockLandscape } from './orientation';
 import { closeAudio, enableAudio } from '../audio/audio';
+import { useGamepadPause } from './useGamepadPause';
 import { useGameStore } from '../state/gameStore';
 
 export function unlockGame(): void {
@@ -14,6 +15,7 @@ export function unlockGame(): void {
 /** Input stays mounted while the Canvas suspends and while menus are open. */
 export function useGameControls(): void {
   useInputBridge();
+  useGamepadPause();
   useKeyboardInput();
 
   useEffect(() => {

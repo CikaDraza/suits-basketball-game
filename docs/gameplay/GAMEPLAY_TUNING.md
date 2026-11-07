@@ -201,3 +201,13 @@ S01 dodaje `animation.dribbleHand`: `releasePhase` 0.12, `followThroughPhase` 0.
 
 Merenja, kontaktni prozori i ograničenja su u [S01 izveštaju](S01_IMPLEMENTATION_REPORT.md).
 Istorijski pregled vrednosti `465f6e0` iznad ostaje sačuvan.
+
+## Korekcija posle S01
+
+Aktuelno: Shaq/Chuck `drop` 0.27/0.25 m i `dribbleTop` 1.30/1.20 m.
+Elbow pole se menja samo u driblingu; hold ostaje sa laktovima spolja.
+`gait.minFootGap` je 0.27 m, `stride` forward/backward/strafe/post/defensive
+0.72/0.58/0.52/0.45/0.50, `slowStrideScale` 0.72. Posture `postDrop` je 0.19,
+`movingDrop` 0.07, a spread hold/defensive/post je 0.065/0.16/0.15 m.
+Korisnički razlog, kalibracija i stvarno izvršene provere su u
+[dopuni driblinga](DRIBBLE_FEEDBACK_FIX.md); istorijske vrednosti iznad nisu aktuelni tuning.

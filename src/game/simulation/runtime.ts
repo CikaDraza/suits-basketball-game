@@ -23,6 +23,7 @@ function createFighter(slot: number, legend: Legend): Fighter {
     vx: 0,
     vz: 0,
     hand: 1,
+    manualHand: false,
     lastQ: -10,
     lastR: -10,
     taps: 0,
@@ -61,16 +62,24 @@ function createFighter(slot: number, legend: Legend): Fighter {
 }
 
 /** One source for initial state and resets, including transient flight and inbound state. */
-export function createDuelState(legends: [Legend, Legend], seed = 42, revision = -1) {
+export function createDuelState(
+  legends: [Legend, Legend],
+  seed = 42,
+  revision = -1,
+  start: 'inbound' | 'live' = 'inbound',
+) {
   const spawn = level.spawns[level.initialOwner];
   return {
     time: 0,
     players: [createFighter(0, legends[0]), createFighter(1, legends[1])] as [Fighter, Fighter],
-    owner: level.initialOwner,
+    owner: start === 'live' ? level.initialOwner : -1,
     lastTouch: level.initialOwner,
-    ballState: 'held' as BallState,
+    ballState: (start === 'live' ? 'held' : 'inbound') as BallState,
     ballControl: createBallHandlingState(),
-    ball: { x: spawn.x, y: config.ball.holdHeight, z: spawn.z },
+    ball:
+      start === 'live'
+        ? { x: spawn.x, y: config.ball.holdHeight, z: spawn.z }
+        : { ...level.inbound },
     flight: {
       sx: 0,
       sy: 0,
@@ -111,7 +120,7 @@ export function createDuelState(legends: [Legend, Legend], seed = 42, revision =
     looseTimer: 0,
     inboundOwner: level.initialOwner,
     inboundStage: 'position' as InboundStage,
-    inboundClock: 0,
+    inboundClock: start === 'live' ? 0 : config.inbound.positionTime,
     aiPassAt: 0,
     inboundPass: null as PhysicalInboundPass | null,
     lastInboundRequestId: 0,

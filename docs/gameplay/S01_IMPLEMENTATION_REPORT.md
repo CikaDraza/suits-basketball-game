@@ -1,5 +1,9 @@
 # S01 — fazni rad ruke kroz ceo dribling
 
+**Dopuna:** korisnik je odbio vizuelni rezultat prve kalibracije. Aktuelna
+popravka amplituda, laktova i ulaza za crossover dokumentovana je u
+[korekciji driblinga](DRIBBLE_FEEDBACK_FIX.md). Brojevi ispod opisuju prvi S01 run.
+
 Grana: `feat/s01-dribble-hand-cycle`. Osnova: `524aea9` (S00 dokumentacija),
 gameplay osnova `465f6e0`. Korisnik je odobrio početak S01. Ovaj zapis opisuje
 S01; naredni slice-ovi nisu započeti. Konačan status vodi

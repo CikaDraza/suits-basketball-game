@@ -107,7 +107,7 @@ function checkHandCycle(samples: Frame[], label: string) {
   const range = (values: number[]) => Math.max(...values) - Math.min(...values);
   const palmRange = range(palms.map((p) => p.palm.y));
   const elbowRange = range(palms.map((p) => p.elbowBend));
-  expect(palmRange, `${label}: frozen palm`).toBeGreaterThan(0.085);
+  expect(palmRange, `${label}: frozen palm`).toBeGreaterThan(0.18);
   expect(elbowRange, `${label}: frozen elbow`).toBeGreaterThan(12);
   for (const [name, start, end] of [
     ['push', 0, 0.13],
@@ -173,7 +173,7 @@ for (const cap of [0, 20])
       await page.locator('canvas').click({ position: { x: 10, y: 10 } });
       await page.evaluate(async (legend) => {
         window.__TEST__!.setLegend!(0, legend);
-        await window.__TEST__!.reset(42);
+        await window.__TEST__!.reset(42, 'live');
         window.__TEST__!.teleport('player', [5, 0.95, 0]);
         window.__TEST__!.teleport('opponent', [9, 0.95, -4]);
         window.__TEST__!.inspectCharacter!('front');

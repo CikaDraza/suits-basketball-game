@@ -17,6 +17,7 @@ import type { Fighter, PlayerSlot } from '../simulation/types';
 import { useGameStore } from '../state/gameStore';
 import {
   getInputResetVersion,
+  takeButtonEdges,
   getHeldMovementDuration,
   takeReleasedMovements,
   useInputStore,
@@ -28,6 +29,14 @@ import {
   type ReleasedMovement,
 } from '../simulation/heldMovement';
 import { useHarnessStore } from '../state/harnessStore';
+import { useControlSettingsStore } from '../state/controlSettingsStore';
+import {
+  readGamepadInput,
+  nthConnectedPad,
+  createPadGate,
+  getPadNeutral,
+} from '../input/gamepadInput';
+import { setControlContextReader } from '../input/controlContext';
 import { hoopImpulse, hangOnRim, resetHoop } from '../court/hoopRig';
 
 export type { Fighter, Mode, Handling, InboundStage } from '../simulation/types';
@@ -47,6 +56,13 @@ export type { Fighter, Mode, Handling, InboundStage } from '../simulation/types'
  *   Keep a direction pressed beyond the short tap window = start dribbling and moving.
  */
 export const duel = createDuelState(['shaq', 'chuck']);
+const inputContext = (slot: number) =>
+  (duel.ballState === 'inbound' || duel.ballState === 'pass' ? duel.inboundOwner : duel.owner) ===
+  slot
+    ? ('offense' as const)
+    : ('defense' as const);
+setControlContextReader(inputContext);
+const padGate = createPadGate();
 export const bodies: {
   players: (RapierRigidBody | null)[];
   ball: RapierRigidBody | null;
@@ -147,6 +163,7 @@ function gain(i: number) {
   duel.ballControl.owner = -1;
   duel.lastTouch = i;
   p.handling = 'hold';
+  p.manualHand = false;
   cancelHeldMovement(p);
   p.jab = 0;
   p.charge = 0;
@@ -407,7 +424,10 @@ function shoot(i: number) {
 // ---------------------------------------------------------------- reset
 export function resetDuel(seed = 42, scenario?: string) {
   const state = useGameStore.getState();
-  Object.assign(duel, createDuelState(state.legends, seed, state.revision));
+  Object.assign(
+    duel,
+    createDuelState(state.legends, seed, state.revision, scenario === 'live' ? 'live' : 'inbound'),
+  );
   duel.lastInboundRequestId = state.inboundRequestSequence;
   syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   resetHoop();
@@ -449,7 +469,7 @@ export function resetDuel(seed = 42, scenario?: string) {
   );
   bodies.ball?.setGravityScale(0, true);
   useInputStore.getState().flush();
-  if (scenario === 'inbound') inbound(0, 'start');
+  if (scenario !== 'live') inbound(level.initialOwner, 'start');
   if (scenario === 'inbound-cpu') inbound(1, 'start');
   useGameStore.setState((previous) => ({
     ...createHudSnapshot(duel, previous, HUD_SETTINGS),
@@ -465,50 +485,59 @@ type Input = {
   r: boolean;
   heldFor?: number;
   releases?: readonly ReleasedMovement[];
+  hand?: number;
+  qPressed?: boolean;
+  rPressed?: boolean;
+  rReleased?: boolean;
 };
 function controls(i: number, dt: number): Input {
   const input = useInputStore.getState();
   const releases = i === 0 ? takeReleasedMovements() : undefined;
-  const pads = navigator.getGamepads?.() || [];
-  const pad = pads[i];
-  if (
-    pad &&
-    (Math.hypot(pad.axes[0] || 0, pad.axes[1] || 0) > c.player.minMove ||
-      pad.buttons[2]?.pressed ||
-      pad.buttons[3]?.pressed)
-  ) {
-    if (i === 1) duel.p2Human = true;
+  const edges = i === 0 ? takeButtonEdges() : [];
+  const settings = useControlSettingsStore.getState();
+  const pad = nthConnectedPad(navigator.getGamepads?.() || [], i);
+  const neutral = getPadNeutral(settings.profile, pad);
+  const allowed = padGate(pad, i, getInputResetVersion(), settings.profile.deadzone, neutral);
+  const mapped = readGamepadInput(
+    allowed ? pad : null,
+    settings.profile[inputContext(i)],
+    settings.profile.deadzone,
+    neutral,
+  );
+  if (i === 0) {
+    let x = input.moveX + mapped.x,
+      z = input.moveZ + mapped.z;
+    const magnitude = Math.hypot(x, z);
+    if (magnitude > 1) {
+      x /= magnitude;
+      z /= magnitude;
+    }
+    let edgeHand = 0;
+    for (const edge of edges)
+      if (edge.active && (edge.action === 'handLeft' || edge.action === 'handRight'))
+        edgeHand = edge.action === 'handLeft' ? 1 : -1;
+    const hand = mapped.hand || (input.handLeft ? 1 : input.handRight ? -1 : edgeHand);
     return {
-      x: pad.axes[0] || 0,
-      z: -(pad.axes[1] || 0),
-      q: !!pad.buttons[3]?.pressed,
-      r: !!pad.buttons[2]?.pressed,
-    };
-  }
-  if (i === 0)
-    return {
-      x: input.moveX,
-      z: input.moveZ,
-      q: input.actionB,
-      r: input.actionA,
-      heldFor: getHeldMovementDuration(),
+      x,
+      z,
+      q: input.actionB || mapped.q,
+      r: input.actionA || mapped.r,
+      hand,
+      qPressed: edges.some((e) => e.action === 'actionB' && e.active),
+      rPressed: edges.some((e) => e.action === 'actionA' && e.active),
+      rReleased: edges.some((e) => e.action === 'actionA' && !e.active) && !mapped.r,
+      heldFor: Math.hypot(mapped.x, mapped.z) > 0 ? undefined : getHeldMovementDuration(),
       releases,
     };
-  if (duel.p2Human && !pad) duel.p2Human = false;
-  if (duel.p2Human)
-    return {
-      x: 0,
-      z: 0,
-      q: !!pad?.buttons[3]?.pressed,
-      r: !!pad?.buttons[2]?.pressed,
-    };
-  if (useHarnessStore.getState().testMode)
-    return {
-      x: 0,
-      z: 0,
-      q: false,
-      r: false,
-    };
+  }
+  if (pad && (Math.hypot(mapped.x, mapped.z) > 0 || mapped.q || mapped.r || mapped.hand))
+    duel.p2Human = true;
+  if (!pad && duel.p2Human) {
+    duel.p2Human = false;
+    duel.players[i].manualHand = false;
+  }
+  if (duel.p2Human) return mapped;
+  if (useHarnessStore.getState().testMode) return { x: 0, z: 0, q: false, r: false };
   return cpu(i, dt);
 }
 function cpu(i: number, dt: number): Input {
@@ -667,15 +696,22 @@ export function tickDuel(delta: number) {
   duel.players.forEach((p, i) => {
     const b = bodies.players[i];
     if (!b) return;
-    const input = controls(i, dt),
-      qDown = input.q && !p.prevQ,
-      rDown = input.r && !p.prevR,
-      rUp = !input.r && p.prevR;
+    const input = controls(i, dt);
     const resetVersion = getInputResetVersion();
     if (p.inputResetVersion !== resetVersion) {
       cancelHeldMovement(p);
+      p.charge = 0;
+      p.prevQ = p.prevR = false;
+      p.prevX = 0;
+      p.taps = 0;
+      p.lastQ = p.lastR = -99;
+      p.interceptUntil = 0;
+      if (p.mode === 'contest') p.mode = 'idle';
       p.inputResetVersion = resetVersion;
     }
+    const qDown = (input.q && !p.prevQ) || input.qPressed,
+      rDown = (input.r && !p.prevR) || input.rPressed,
+      rUp = (!input.r && p.prevR) || input.rReleased;
     const o = duel.players[1 - i];
     p.timer = Math.max(0, p.timer - dt);
     p.grace = Math.max(0, p.grace - dt);
@@ -750,7 +786,20 @@ export function tickDuel(delta: number) {
         else p.charge = 0;
         if (p.mode === 'contest') p.mode = 'idle';
       }
-      if (Math.sign(input.x) !== Math.sign(p.prevX) && Math.abs(input.x) > c.player.minMove) {
+      if (owner && input.hand) {
+        p.hand = input.hand;
+        p.manualHand = true;
+        if (p.handling === 'hold' && p.charge === 0) {
+          p.handling = 'dribble';
+          p.jab = 0;
+          duel.dribbles++;
+        }
+      }
+      if (
+        !p.manualHand &&
+        Math.sign(input.x) !== Math.sign(p.prevX) &&
+        Math.abs(input.x) > c.player.minMove
+      ) {
         p.hand = Math.sign(input.x);
         if (p.mode === 'post' && !(owner && p.handling === 'hold'))
           p.vx += p.hand * c.player.jukeImpulse;
@@ -1069,7 +1118,7 @@ export function tickDuel(delta: number) {
           duel.ballState = 'scored';
           syncBallCollision(ball, duel.ballState, BALL_CLEARANCE);
           duel.resetTimer = c.shots.resetDelay + (f.dunk ? c.shots.dunkHang : 0);
-          duel.nextOwner = 1 - f.shooter;
+          duel.nextOwner = f.shooter;
           ball.setGravityScale(1, true);
           ball.setLinvel(
             {

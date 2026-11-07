@@ -130,7 +130,9 @@ for (const legend of ['shaq', 'chuck'] as const) {
     context.after(asset.dispose);
     const floor = new Vector3(),
       ball = new Vector3(),
-      towards = new Vector3();
+      towards = new Vector3(),
+      shoulder = new Vector3(),
+      elbow = new Vector3();
     for (const rate of [20, 30, 60, 120])
       for (const hand of [1, -1])
         for (const moving of [false, true]) {
@@ -148,6 +150,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
             maxError = 0,
             maxAngularSpeed = 0,
             maxPalmSpeed = 0,
+            maxElbowOutward = 0,
             minFreeGap = Infinity;
           const previousPalm = new Vector3();
           let current = protectedBallTarget(legend, { x: 0, y: BODY_Y, z: 0 }, 0, false, {
@@ -209,10 +212,16 @@ for (const legend of ['shaq', 'chuck'] as const) {
               if (state.phase > 0.35 && state.phase < 0.7) minFreeGap = Math.min(minFreeGap, gap);
               assert.ok(gap > -0.015, `${where} ball penetration ${gap}`);
               assert.ok(
-                d.palm.y > config.ballControl[legend].dribbleTop - 0.08,
+                d.palm.y > config.player[legend].height * 0.47,
                 `${where} hand chases ball toward floor`,
               );
               maxError = Math.max(maxError, d.error);
+              // Measure in the turning body's lateral frame. An elbow pole can
+              // keep perfect palm contact while flaring the upper arm sideways.
+              arm.upper.getWorldPosition(shoulder);
+              arm.fore.getWorldPosition(elbow).sub(shoulder);
+              const outward = hand * (elbow.x * Math.cos(angle) - elbow.z * Math.sin(angle));
+              maxElbowOutward = Math.max(maxElbowOutward, outward);
               maxPalmSpeed = Math.max(maxPalmSpeed, previousPalm.distanceTo(d.palm) / dt);
               [arm.upper, arm.fore, arm.hand].forEach((b, i) => {
                 maxAngularSpeed = Math.max(maxAngularSpeed, previous[i].angleTo(b.quaternion) / dt);
@@ -232,6 +241,8 @@ for (const legend of ['shaq', 'chuck'] as const) {
           const range = (a: number[]) => Math.max(...a) - Math.min(...a);
           const palmRange = Math.min(...complete.map((c) => range(c.y)));
           const elbowRange = Math.min(...complete.map((c) => range(c.elbow)));
+          const extensionBend = Math.max(...complete.map((c) => Math.min(...c.elbow)));
+          const catchBend = Math.min(...complete.map((c) => Math.max(...c.elbow)));
           const result = {
             rate,
             hand,
@@ -239,16 +250,21 @@ for (const legend of ['shaq', 'chuck'] as const) {
             cycles: complete.length,
             palmRange,
             elbowRange,
+            extensionBend,
+            catchBend,
             maxGap,
             maxError,
             maxAngularSpeed,
             maxPalmSpeed,
+            maxElbowOutward,
             minFreeGap,
           };
           context.diagnostic(JSON.stringify(result));
           assert.ok(complete.length >= 3, 'at least three complete measured cycles');
-          assert.ok(palmRange > 0.095, `frozen palm: ${JSON.stringify(result)}`);
+          assert.ok(palmRange > 0.18, `insufficient palm push: ${JSON.stringify(result)}`);
           assert.ok(elbowRange > 12, `frozen elbow: ${JSON.stringify(result)}`);
+          assert.ok(extensionBend < 40, `arm never comfortably extends: ${JSON.stringify(result)}`);
+          assert.ok(maxElbowOutward < 0.15, `flared dribble elbow: ${JSON.stringify(result)}`);
           assert.ok(minFreeGap > 0.1, 'released palm stays separate from the free bounce');
           assert.ok(maxError < 0.02, 'targets remain reachable within existing joint limits');
           assert.ok(maxPalmSpeed < 4, 'bounded palm speed through the cycle');

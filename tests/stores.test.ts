@@ -82,10 +82,14 @@ test('game reset immediately clears the full HUD and input while retaining match
   assert.equal(next.score, 0);
   assert.equal(next.cpuScore, 0);
   assert.equal(next.finalScore, 0);
-  assert.equal(next.owner, level.initialOwner);
-  assert.equal(next.ballState, 'held');
-  assert.equal(next.phase, 'LIVE');
-  assert.equal(next.inbound, null);
+  assert.equal(next.owner, -1);
+  assert.equal(next.ballState, 'inbound');
+  assert.equal(next.phase, 'INBOUND_PHASE');
+  assert.deepEqual(next.inbound, {
+    stage: 'POSITIONING',
+    remaining: config.inbound.positionTime,
+    owner: level.initialOwner,
+  });
   assert.equal(next.charge, 0);
   assert.equal(next.holdProgress, 0);
   assert.equal(next.health, 125);
@@ -94,7 +98,7 @@ test('game reset immediately clears the full HUD and input while retaining match
   assert.equal(next.cpu, true);
   assert.deepEqual(next.energies, [config.player.energyMax, config.player.energyMax]);
   assert.deepEqual(next.modes, ['idle', 'idle']);
-  assert.deepEqual(next.handling, level.initialOwner === 0 ? ['hold', 'none'] : ['none', 'hold']);
+  assert.deepEqual(next.handling, ['none', 'none']);
   assert.equal(next.revision, previous.revision + 1);
   assert.equal(next.legends, legends);
   assert.equal(next.sound, false);
@@ -154,6 +158,7 @@ test('pause and resume flush held controls and ignore invalid terminal transitio
 });
 
 test('inbound requests are owned intents, gated by screen/possession and cleared on reset', () => {
+  useGameStore.setState({ phase: 'LIVE', inbound: null, owner: 0, ballState: 'held' });
   const game = useGameStore.getState();
   game.requestInboundPass();
   assert.equal(useGameStore.getState().inboundPassRequest, null);

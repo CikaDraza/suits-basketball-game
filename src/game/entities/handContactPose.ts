@@ -83,8 +83,13 @@ export function createHandContactPose(model: Object3D, legend: Legend) {
             normal.copy(forward).multiplyScalar(Math.sin(motion.pitch));
             normal.y = -Math.cos(motion.pitch);
             finger.copy(forward);
-            pole.copy(left).multiplyScalar(sign).addScaledVector(forward, 0.3);
-            pole.y = -0.1;
+            // Keep the upper arm near the ribs; the old lateral pole lifted
+            // the elbow toward shoulder height, hiding forearm work.
+            pole
+              .copy(left)
+              .multiplyScalar(sign * 0.08)
+              .addScaledVector(forward, -1.2);
+            pole.y = -1;
           } else {
             normal
               .copy(left)

@@ -53,8 +53,8 @@ test('an idle simulation reuses the complete HUD snapshot', () => {
 });
 
 test('shot charging preserves unrelated HUD tuple references', () => {
-  const runtime = createDuelState(['shaq', 'chuck']);
-  const previous = createInitialHudSnapshot();
+  const runtime = createDuelState(['shaq', 'chuck'], 42, -1, 'live');
+  const previous = createHudSnapshot(runtime, createInitialHudSnapshot(), settings);
   runtime.players[0].charge = config.shots.perfectTime;
   const snapshot = createHudSnapshot(runtime, previous, settings);
   assert.notEqual(snapshot, previous);
@@ -67,8 +67,8 @@ test('shot charging preserves unrelated HUD tuple references', () => {
 });
 
 test('changing energy replaces only the changed tuple and never leaks mutable runtime data', () => {
-  const runtime = createDuelState(['shaq', 'chuck']);
-  const previous = createInitialHudSnapshot();
+  const runtime = createDuelState(['shaq', 'chuck'], 42, -1, 'live');
+  const previous = createHudSnapshot(runtime, createInitialHudSnapshot(), settings);
   runtime.players[0].energy = 40;
   const snapshot = createHudSnapshot(runtime, previous, settings);
   assert.notEqual(snapshot.energies, previous.energies);
@@ -139,13 +139,14 @@ test('a new duel restores transient state and owns fresh nested objects', () => 
   );
   assert.equal(next.players[0].energy, config.player.energyMax);
   assert.equal(next.players[0].grip.ok, false);
-  assert.equal(next.ballState, 'held');
-  assert.equal(next.ball.y, config.ball.holdHeight);
-  assert.equal(next.ball.x, level.spawns[level.initialOwner].x);
+  assert.equal(next.owner, -1);
+  assert.equal(next.ballState, 'inbound');
+  assert.deepEqual(next.ball, level.inbound);
+  assert.equal(next.inboundOwner, level.initialOwner);
   assert.deepEqual(next.score, [0, 0]);
   assert.equal(next.flight.dunk, false);
   assert.equal(next.flight.t, 0);
-  assert.equal(next.inboundClock, 0);
+  assert.equal(next.inboundClock, config.inbound.positionTime);
   assert.equal(next.inboundStage, 'position');
   assert.equal(next.event.t, -10);
   assert.notEqual(next.players, previous.players);
@@ -155,4 +156,24 @@ test('a new duel restores transient state and owns fresh nested objects', () => 
   assert.notEqual(next.flight, previous.flight);
   assert.notEqual(next.score, previous.score);
   assert.notEqual(next.event, previous.event);
+});
+
+// A live fixture is explicit and cannot silently change production opening rules.
+test('the explicit live fixture gives the ball to the initial owner while normal starts inbound', () => {
+  const live = createDuelState(['shaq', 'chuck'], 42, 0, 'live');
+  assert.equal(live.owner, level.initialOwner);
+  assert.equal(live.ballState, 'held');
+  assert.equal(live.inboundClock, 0);
+  assert.equal(live.ball.x, level.spawns[level.initialOwner].x);
+  const opening = createDuelState(['shaq', 'chuck']);
+  const hud = createInitialHudSnapshot();
+  assert.equal(opening.ballState, 'inbound');
+  assert.deepEqual(opening.ball, level.inbound);
+  assert.equal(hud.owner, -1);
+  assert.equal(hud.phase, 'INBOUND_PHASE');
+  assert.deepEqual(hud.inbound, {
+    stage: 'POSITIONING',
+    remaining: config.inbound.positionTime,
+    owner: level.initialOwner,
+  });
 });

@@ -5,19 +5,29 @@ komande. Polazni kod je `465f6e0`; [audit](FOUNDATION_AUDIT.md) beleži ogranič
 Postojeći `inputStore`, keyboard/touch hookovi i gamepad čitanje u `Duel.ts`
 ostaju dok im odgovornost ne bude preneta malim proverljivim zahvatom.
 
-## Postojeće ponašanje
+## Aktuelne komande posle korisničke dopune S01
 
-| Izvor/komanda        | Sadašnji smisao                                                                                                                 |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| WASD ili strelice    | Kretanje relativno kameri; kratak direction tap iz hold-a daje jab, zadržano kretanje prelazi u dribling                        |
-| R ili Space / Square | ACTION_A: priprema/puštanje šuta u napadu; contest/steal u odbrani; postojeći triple-tap smash                                  |
-| Q ili J / Triangle   | ACTION_B: post/spin, dupli tap flop; tokom inbound pozicioniranja stav/zagrađivanje, u pass prozoru odmah zahtev za dodavanje   |
-| Escape               | Pauza/nastavak jednom po fizičkom pritisku                                                                                      |
-| Touch                | Analogni joystick i Square/Triangle; Circle i Cross trenutno rezervisani i isključeni                                           |
-| Gamepad              | Leva palica, `axes[0..1]`, Square/X `buttons[2]`, Triangle/Y `buttons[3]`; P1 gamepad 0, P2 gamepad 1 uz postojeći CPU fallback |
+Osnovne mape i učenje komandi sada su implementirani na korisnički zahtev.
+To ne označava završetak punog S02 ugovora opisanog niže: zajednički intent sat,
+deterministički replay i sve buduće tehnike još nisu implementirani.
+
+| Izvor/komanda        | Sadašnji smisao                                                                                                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WASD ili strelice    | Kretanje relativno kameri; kratak direction tap iz hold-a daje jab, zadržano kretanje prelazi u dribling                                                                                                                    |
+| R ili Space / Square | ACTION_A: priprema/puštanje šuta u napadu; contest/steal u odbrani; postojeći triple-tap smash                                                                                                                              |
+| Q ili J / Triangle   | ACTION_B: post/spin, dupli tap flop; tokom inbound pozicioniranja stav/zagrađivanje, u pass prozoru odmah zahtev za dodavanje                                                                                               |
+| Escape               | Pauza/nastavak jednom po fizičkom pritisku                                                                                                                                                                                  |
+| Z / C                | Leva/desna ruka: pokreće dribling u mestu ili traži crossover; ne pokreće telo                                                                                                                                              |
+| Touch                | Analogni joystick i Square/Triangle; Circle/Cross biraju levu/desnu ruku u napadu                                                                                                                                           |
+| Gamepad              | Podrazumevano leva palica `axes[0..1]`, desna palica horizontalno `axes[2]` bira ruku, Square/X `buttons[2]`, Triangle/Y `buttons[3]`, Options `buttons[9]`; prva dva stvarno povezana kontrolera su P1/P2, uz CPU fallback |
+
+Pause → Controls čuva odvojene offense/defense mape za keyboard, gamepad i mobile
+u `suits.controls.v1`. Učenje prvo zahteva neutralan kontroler, a posle čuva komandu
+tek uz puštanje gestа pre povratka u igru. Escape ostaje izlaz/pauza. Mobilne mape
+menjaju četiri dugmeta, a postojeća leva palica ostaje analogno kretanje.
 
 Keyboard/touch aliasi i izvori već imaju testove oslobađanja i blur/pause cleanup-a.
-Gamepad još nema pun ugovor desne palice, trigger-a, profila i disconnect-a.
+Desna palica ima ograničen ugovor izbora ruke/crossover-a; nije još opšti skill vector.
 `inputStore` meri gestove event vremenom, gamepad u simulaciji; S02 mora to da
 ujednači. Aktuelni jab tap prozor je **0,1 s**, ne stara dokumentovana granica 0,8 s.
 

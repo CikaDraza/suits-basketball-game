@@ -24,12 +24,12 @@ const helpSections = [
   {
     title: `05 / NO FOULS. FIRST TO ${config.score.winTarget}.`,
     description:
-      'One point in close, two beyond the arc. Possession swaps after a basket. Out of bounds? Q passes in from the red bottom-left spot. Both players can fight for position and intercept the pass.',
+      'One point in close, two beyond the arc. The scorer keeps possession. Every start and restart uses the left sideline. Out of bounds awards the opponent of the last player to touch the ball. Q seals during positioning and passes immediately in the pass window.',
   },
   {
     title: '06 / LOCAL DUEL',
     description:
-      'Connect controllers: left stick moves, Triangle posts, Square shoots. A second active controller takes over CPU. Choose either legend for both slots in timeout.',
+      'Default controls: left stick moves, right stick left/right selects the dribble hand and requests a crossover. Z/C do the same on keyboard. Triangle posts, Square shoots. Change and save offense/defense bindings in timeout → Controls. A second active controller takes over CPU.',
   },
 ];
 

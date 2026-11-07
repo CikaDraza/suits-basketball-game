@@ -49,7 +49,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await page.locator('canvas').click({ position: { x: 10, y: 10 } });
     await page.evaluate(async (legend) => {
       window.__TEST__!.setLegend!(0, legend);
-      await window.__TEST__!.reset(42);
+      await window.__TEST__!.reset(42, 'live');
       window.__TEST__!.setDebugFlag('colliders', true);
     }, legend);
     await page.waitForFunction(() => (window.__TEST__!.getState().time as number) > 0.5);
