@@ -36,3 +36,5 @@ Escape za pauzu/nastavak. Na telefonu se koriste džojstik i dva dugmeta u lands
 [Zagrađivanje: kontaktna ruka, traženje lopte i koraci unazad](docs/post-motion-fix.md).
 
 [Dvoručni hvat u post stavu i tap za jab step](docs/held-ball-fix.md).
+
+[Gameplay Foundation v2: plan, status S00–S16 i regresioni baseline](plan.md).
