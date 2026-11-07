@@ -118,7 +118,24 @@
       "cutSpeed": 1.2,
       "cutHold": 1.4
     },
-    "maxPlausibleSpeed": 9
+    "maxPlausibleSpeed": 9,
+    "dribbleHand": {
+      "releasePhase": 0.12,
+      "followThroughPhase": 0.3,
+      "recoveryPhase": 0.52,
+      "catchPhase": 0.92,
+      "wristPitch": 0.12,
+      "shaq": {
+        "drop": 0.14,
+        "retractSide": 0.1,
+        "retractForward": 0.16
+      },
+      "chuck": {
+        "drop": 0.13,
+        "retractSide": 0.08,
+        "retractForward": 0.14
+      }
+    }
   },
   "camera": {
     "position": [24.5, 12.34, 7.48],

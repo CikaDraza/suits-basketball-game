@@ -69,8 +69,11 @@ test('an open lane uses a physical chest pass aimed at current hands after the r
   expect(pass.source).toEqual({ x: 5.2, y: 1, z: 7.85 });
   await expect.poll(async () => (await flight(page))?.outcome).toBe('caught');
   const state = await snapshot(page);
-  expect(state.owner).toBe(0);
+  // Catch is published after physics; the low-frequency HUD can still describe
+  // the previous tick. Assert gameplay immediately and HUD convergence separately.
+  expect(state.ball).toMatchObject({ owner: 0, state: 'held' });
   expect((state.player as { handling: string }).handling).toBe('hold');
+  await expect.poll(async () => (await snapshot(page)).owner).toBe(0);
   await page.screenshot({ path: info.outputPath('chest-caught.png') });
 });
 

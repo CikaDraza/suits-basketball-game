@@ -1,6 +1,8 @@
 # S01 — predlog prvog implementacionog zahvata
 
-Status: Planned. Ovaj dokument ne menja animaciju. Preduslov je pregledan S00 i
+Predlog je odobren odgovorom „Ok, može S01“. Stvarne izmene i verifikacija su u
+[S01 izveštaju](S01_IMPLEMENTATION_REPORT.md), a status u tracker-u. Tekst ispod
+čuva dogovoreni opseg predloga. Preduslov je pregledan S00 i
 zabeležen baseline. Sačuvati postojeću fiziku, komande, oslonce i modele.
 
 ## Problem koji treba rešiti

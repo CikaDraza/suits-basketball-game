@@ -9,7 +9,7 @@ Ovaj fajl vodi napredak. Kanonski dokument je
 Prethodni commit-i `bd83a66` (Slice 2) i `465f6e0` (Slice 3) nisu oznake S02/S03
 iz ovog novog plana.
 
-## Poreklo dokumenta i opseg ove promene
+## Poreklo dokumenta i istorijski opseg S00
 
 Prilog „Gameplay Foundation v2 — Biomechanics, Physics, Basketball Skills & Controls“
 primljen je 2026-11-07, 42.198 bajtova. SHA-256 originala:
@@ -17,9 +17,9 @@ primljen je 2026-11-07, 42.198 bajtova. SHA-256 originala:
 Sadržaj predloga je sačuvan; Markdown format je usklađen sa Prettier-om. Dopune
 zavisnosti su odvojene u auditu, umesto tihog menjanja korisničkih zahteva.
 
-Ova promena obuhvata dokumentaciju, pregled i beleženje postojećih testova.
+S00 je obuhvatio dokumentaciju, pregled i beleženje postojećih testova.
 Nijedan S01–S16 gameplay zahvat nije deo S00. Grana za pregled:
-`docs/gameplay-foundation-v2-s00`. Nema direktnog push-a na `main`.
+`docs/gameplay-foundation-v2-s00`, commit `524aea9`. Nema direktnog push-a na `main`.
 
 ## Značenje statusa
 
@@ -35,25 +35,25 @@ ostaju vidljive u [registru scenarija](SCENARIO_REGISTRY.md).
 
 ## Redosled i kontrolne kapije
 
-| Slice | Opseg                                                 | Preduslovi za prihvatanje                               | Trenutni status                                                                                         |
-| ----- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| S00   | Audit, ugovori, scenario registar, baseline i roadmap | Zapis rezultata provere trenutne osnove i pregled plana | Implemented — dokumentacija i baseline završeni; 2 postojeća browser pada otvorena; prihvatanje pending |
-| S01   | Ceo ciklus ruke pri driblingu i kontakt               | S00                                                     | Planned                                                                                                 |
-| S02   | Jedinstvene input namere i gamepad                    | S00; izvršavanje posle S01                              | Planned                                                                                                 |
-| S03   | Teško kretanje, tempo i progresivni zamor             | S02                                                     | Planned; postojeće ubrzanje/gait se proširuju                                                           |
-| S04   | Kontakt, odbrambeni otpor i balans                    | S03                                                     | Planned                                                                                                 |
-| S05   | Triple threat, pivot i jab                            | S04                                                     | Planned                                                                                                 |
-| S06   | Crossover i overcommitment                            | S05 + S01 (dopuna audita)                               | Planned                                                                                                 |
-| S07   | Inbound predikcija, lob i recovery                    | S03 + S04; regresije kontakta S01                       | Planned; postojeći inbound ostaje osnova                                                                |
-| S08   | Priprema šuta, fake i događaj izbačaja                | S01 + S05                                               | Planned                                                                                                 |
-| S09   | Fizički šut, tabla, obruč, mreža i bodovanje          | S08                                                     | Planned                                                                                                 |
-| S10   | Post-up, drop step i hook                             | S04 + S05 + S09                                         | Planned                                                                                                 |
-| S11   | Floater, step-back i fadeaway                         | S08 + S09 + S10                                         | Planned                                                                                                 |
-| S12   | Vertikalna odbrana, contest i skok                    | S04 + S09                                               | Planned                                                                                                 |
-| S13   | Monster dunk, prsti, obruč, vešanje i noge            | S09 + S12; provera realnog grip-a i dohvata             | Planned                                                                                                 |
-| S14   | Flop, pad, ustajanje, leg grab i smash                | S04 + S12; razrešen fake/shot/smash ugovor iz S08       | Planned                                                                                                 |
-| S15   | Početno raspucavanje i lifecycle duela                | S09 + reset regresije                                   | Planned                                                                                                 |
-| S16   | CPU, povezivanje poteza, balans i performanse         | Prihvaćeni prethodni gameplay slice-ovi                 | Planned                                                                                                 |
+| Slice | Opseg                                                 | Preduslovi za prihvatanje                               | Trenutni status                                                                                                     |
+| ----- | ----------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| S00   | Audit, ugovori, scenario registar, baseline i roadmap | Zapis rezultata provere trenutne osnove i pregled plana | Accepted — korisnik odobrio nastavak na S01; baseline rezultati sačuvani                                            |
+| S01   | Ceo ciklus ruke pri driblingu i kontakt               | S00                                                     | Implemented — S01 4/4 browser, 65/65 unit i vizuelno pregledan; full 31/33, B-02/B-04 otvoreni; prihvatanje pending |
+| S02   | Jedinstvene input namere i gamepad                    | S00; izvršavanje posle S01                              | Planned                                                                                                             |
+| S03   | Teško kretanje, tempo i progresivni zamor             | S02                                                     | Planned; postojeće ubrzanje/gait se proširuju                                                                       |
+| S04   | Kontakt, odbrambeni otpor i balans                    | S03                                                     | Planned                                                                                                             |
+| S05   | Triple threat, pivot i jab                            | S04                                                     | Planned                                                                                                             |
+| S06   | Crossover i overcommitment                            | S05 + S01 (dopuna audita)                               | Planned                                                                                                             |
+| S07   | Inbound predikcija, lob i recovery                    | S03 + S04; regresije kontakta S01                       | Planned; postojeći inbound ostaje osnova                                                                            |
+| S08   | Priprema šuta, fake i događaj izbačaja                | S01 + S05                                               | Planned                                                                                                             |
+| S09   | Fizički šut, tabla, obruč, mreža i bodovanje          | S08                                                     | Planned                                                                                                             |
+| S10   | Post-up, drop step i hook                             | S04 + S05 + S09                                         | Planned                                                                                                             |
+| S11   | Floater, step-back i fadeaway                         | S08 + S09 + S10                                         | Planned                                                                                                             |
+| S12   | Vertikalna odbrana, contest i skok                    | S04 + S09                                               | Planned                                                                                                             |
+| S13   | Monster dunk, prsti, obruč, vešanje i noge            | S09 + S12; provera realnog grip-a i dohvata             | Planned                                                                                                             |
+| S14   | Flop, pad, ustajanje, leg grab i smash                | S04 + S12; razrešen fake/shot/smash ugovor iz S08       | Planned                                                                                                             |
+| S15   | Početno raspucavanje i lifecycle duela                | S09 + reset regresije                                   | Planned                                                                                                             |
+| S16   | CPU, povezivanje poteza, balans i performanse         | Prihvaćeni prethodni gameplay slice-ovi                 | Planned                                                                                                             |
 
 Izvršavanje ide S00 → S01 → S02, zatim numeričkim redom uz kapije iz tabele.
 Promena prioriteta zbog greške koja sprečava proveru mora biti zapisana kao
@@ -69,14 +69,15 @@ ograničen zahvat tekućeg slice-a. Nema usputnog otvaranja drugog velikog slice
 
 ## Evidencija prihvatanja
 
-S00: dokumentacioni opseg je završen. Korisnički pregled i konačno prihvatanje su
-pending; status `Accepted` nije dodeljen. `npm run check`: 61/61, type/lint/format
-prolaze; build prolazi; browser 31/33. B-01 (chest posed) i B-02 (Chuck strafe)
-ostaju otvoreni sa tačnim dokazima u [baseline-u](REGRESSION_BASELINE.md).
-Dunk/fall smoke oba modela je izvršen uz jasno navedena ograničenja FPS-a i
-vizuelnih dokaza. Nije proglašena puna v2 vizuelna verifikacija.
+S00: prihvaćen korisničkim odgovorom „Ok, može S01“ (2026-11-07). Originalni
+rezultati ostaju u [baseline-u](REGRESSION_BASELINE.md): 61/61, build PASS, browser
+31/33. To prihvatanje dokumentacionog koraka nije tvrdnja da su svi gameplay
+scenariji već verifikovani.
 
-Pre sledećeg gameplay zahvata razvrstati B-01/B-02: reprodukcija i razlika
-runtime greške od sampling/snapshot problema, bez tihog snižavanja pragova.
-S01 ostaje predloženi prvi implementacioni zahvat; njegov završetak zahteva i
-zabeleženu odluku o tim regresijama. S01–S16 nisu započeti ovom promenom.
+S01: implementiran na `feat/s01-dribble-hand-cycle`, oba modela i obe ruke.
+Izvršeno: check 65/65, build PASS, S01 browser 4/4; pun paket 31/33 sa otvorenim
+Chuck gait/sampling padovima B-02/B-04. Nije proglašen potpuno zelenim.
+Implementaciju, crveni/zeleni test, kalibraciju i stvarnu proveru vodi
+[S01 izveštaj](S01_IMPLEMENTATION_REPORT.md). Prihvatanje S01 ostaje pending.
+S02–S16 nisu započeti. Kanonski predlog i S00 baseline nisu prepisivani da bi se
+naknadni rezultati prikazali kao polazno stanje.

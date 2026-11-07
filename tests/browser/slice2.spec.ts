@@ -17,6 +17,16 @@ async function settle(page: Page, seconds = 0.45) {
   const from = (await state(page)).time as number;
   await expect.poll(async () => (await state(page)).time).toBeGreaterThan(from + seconds);
 }
+async function togglePost(page: Page, expected: 'post' | 'idle') {
+  await page.keyboard.down('q');
+  try {
+    await expect
+      .poll(async () => ((await state(page)).player as { mode: string }).mode)
+      .toBe(expected);
+  } finally {
+    await page.keyboard.up('q');
+  }
+}
 async function frames(page: Page, seconds: number) {
   return page.evaluate(async (seconds) => {
     const result: Frame[] = [];
@@ -90,6 +100,37 @@ function checkTopContacts(samples: Frame[], label: string): number {
   }
   return tops;
 }
+
+/** Check the rendered rig over the entire bounce, not just a successful touch. */
+function checkHandCycle(samples: Frame[], label: string) {
+  const palms = samples.map((f) => f.hands[f.hand === 1 ? 0 : 1]);
+  const range = (values: number[]) => Math.max(...values) - Math.min(...values);
+  const palmRange = range(palms.map((p) => p.palm.y));
+  const elbowRange = range(palms.map((p) => p.elbowBend));
+  expect(palmRange, `${label}: frozen palm`).toBeGreaterThan(0.085);
+  expect(elbowRange, `${label}: frozen elbow`).toBeGreaterThan(12);
+  for (const [name, start, end] of [
+    ['push', 0, 0.13],
+    ['release', 0.13, 0.35],
+    ['floor', 0.35, 0.6],
+    ['recovery', 0.6, 0.94],
+  ] as const) {
+    expect(
+      samples.some((f) => f.phase >= start && f.phase < end),
+      `${label}: ${name} sampled`,
+    ).toBe(true);
+  }
+  for (const f of samples) {
+    const palm = f.hands[f.hand === 1 ? 0 : 1];
+    const gap = distance(palm.palm, f.ball) - 0.13;
+    expect(gap, `${label}: penetrated ball`).toBeGreaterThan(-0.025);
+    if (f.phase > 0.35 && f.phase < 0.7)
+      expect(gap, `${label}: hand did not release`).toBeGreaterThan(0.1);
+    expect(palm.wristBend).toBeLessThan(65.02);
+    expect(palm.error).toBeLessThan(0.025);
+  }
+  return { palmRange, elbowRange };
+}
 for (const cap of [0, 20])
   for (const [legend, mass] of [
     ['shaq', 150],
@@ -142,14 +183,7 @@ for (const cap of [0, 20])
       expect(((await state(page)).player as { mass: number }).mass).toBeCloseTo(mass, 3);
       checkHold(await frames(page, 0.5));
       await page.screenshot({ path: info.outputPath('hold-front.png') });
-      await page.keyboard.down('q');
-      try {
-        await expect
-          .poll(async () => ((await state(page)).player as { mode: string }).mode)
-          .toBe('post');
-      } finally {
-        await page.keyboard.up('q');
-      }
+      await togglePost(page, 'post');
       await settle(page, 0.5);
       checkHold(await frames(page, 0.5));
       await page.evaluate(() => {
@@ -157,12 +191,14 @@ for (const cap of [0, 20])
         window.__TEST__!.setDebugFlag('handContacts', true);
       });
       await page.screenshot({ path: info.outputPath('post-side-contacts.png') });
+      // Keep the post-hold regression above, then verify ordinary upright dribbling.
+      await togglePost(page, 'idle');
       await page.evaluate(() => {
         window.__TEST__!.setDebugFlag('handContacts', false);
         window.__TEST__!.setHandling!(0, 'dribble', 1);
       });
       await settle(page, 0.5);
-      const left = await frames(page, 1.3);
+      const left = await frames(page, 1.8);
       for (const f of left) {
         expect(f.ball.y).toBeGreaterThanOrEqual(0.128);
         expect(f.hands[0].wristBend).toBeLessThan(65.02);
@@ -183,12 +219,16 @@ for (const cap of [0, 20])
       }
       tops += checkTopContacts(cross, 'cross');
       await settle(page, 0.3);
-      const right = await frames(page, 1.2);
+      const right = await frames(page, 1.8);
       for (const f of right) {
         expect(f.hands[1].wristBend).toBeLessThan(65.02);
         expect(f.hands[1].palm.y).toBeGreaterThan(0.95);
       }
       tops += checkTopContacts(right, 'right');
+      const wholeCycle = {
+        left: checkHandCycle(left, 'left'),
+        right: checkHandCycle(right, 'right'),
+      };
       await page.screenshot({ path: info.outputPath('right-dribble.png') });
       // dribble on the move with the right hand, then flip the stick: the real input path
       // (Duel → p.hand) requests a crossover, and the left hand must take over while walking
@@ -237,6 +277,7 @@ for (const cap of [0, 20])
             f.hands.map((h) => h.wristBend),
           ),
         ),
+        wholeCycle,
         maxActiveContactError: Math.max(
           ...[...moving, ...movingCross]
             .map((f) => f.hands[f.hand === 1 ? 0 : 1])

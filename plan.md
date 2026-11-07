@@ -13,7 +13,8 @@ ovom dokumentacionom promenom. Raniji „Slice 2/3“ nisu novi S02/S03.
 - [Katalog animacionih referenci](docs/gameplay/ANIMATION_REFERENCE_CATALOG.md)
 - [Tuning i dijagnostika](docs/gameplay/GAMEPLAY_TUNING.md)
 - [Stvarni rezultati regresionog baseline-a](docs/gameplay/REGRESSION_BASELINE.md)
-- [Konkretan predlog S01, bez implementacije](docs/gameplay/S01_IMPLEMENTATION_PROPOSAL.md)
+- [Dogovoreni predlog S01](docs/gameplay/S01_IMPLEMENTATION_PROPOSAL.md)
+- [S01 implementacija, merenja i verifikacija](docs/gameplay/S01_IMPLEMENTATION_REPORT.md)
 
 Ostatak fajla čuva istorijski plan i ranije odluke. Stari navodi o primitivnim
 modelima, `public/data/levels`, homing pasu i 0,8 s hold pravilu nisu opis sadašnjeg

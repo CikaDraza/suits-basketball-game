@@ -4,6 +4,10 @@ Datum: 2026-11-07. Osnova: `465f6e080f60bd6060f9f02b52e5f6dcec9e38d4`.
 Lokalni HEAD i udaljeni `origin/main` provereni su pre izmena. Radno stablo bilo
 je čisto. Ovaj pregled ne menja gameplay kod.
 
+Naknadna ispravka F-01/F-02 i trijaža testova opisani su u
+[S01 izveštaju](S01_IMPLEMENTATION_REPORT.md). Nalazi ispod ostaju inventar
+referentnog commita, ne tvrdnja da stari kvar postoji i posle S01.
+
 [Predlog v2](SUITS_GAMEPLAY_FOUNDATION_V2_2026_11_07.md) ostaje sačuvan kao predlog.
 Ovaj dokument beleži činjenice i dopune; napredak vodi isključivo
 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).

@@ -77,7 +77,8 @@ const SOLE_FLOOR = -0.012,
 function checkFrames(label: string, frames: Frame[], report: Record<string, unknown>) {
   let slide = 0,
     travel = 0,
-    forwardSwingWhileBack = 0;
+    forwardSwingWhileBack = 0,
+    hitchReplants = 0;
   const worst: { slide: number; t: number; body: number; speed: number; moving: boolean }[] = [];
   for (let k = 0; k < frames.length; k++) {
     const f = frames[k];
@@ -96,6 +97,10 @@ function checkFrames(label: string, frames: Frame[], report: Record<string, unkn
     const dt = f.t - a.t;
     const body = Math.hypot(f.x - a.x, f.z - a.z);
     travel += body;
+    // The existing presentation deliberately replants after >snapDistance travel
+    // in one rendered frame. Report those measured hitches separately; they are
+    // not unexplained resets during ordinary gait (software WebGL can run <6 FPS).
+    if (body > config.animation.gait.snapDistance) hitchReplants += f.gait.resets - a.gait.resets;
     const fx = Math.sin(f.angle),
       fz = Math.cos(f.angle);
     const backward = ((f.x - a.x) * fx + (f.z - a.z) * fz) / Math.max(dt, 1e-3) < -0.25;
@@ -116,8 +121,15 @@ function checkFrames(label: string, frames: Frame[], report: Record<string, unkn
     });
   }
   const replants = frames.at(-1)!.gait.resets - frames[0].gait.resets;
-  report[label] = { frames: frames.length, travel, slide, forwardSwingWhileBack, replants };
-  expect(replants, `${label}: feet re-planted ${replants} times`).toBeLessThanOrEqual(1);
+  report[label] = {
+    frames: frames.length,
+    travel,
+    slide,
+    forwardSwingWhileBack,
+    replants,
+    hitchReplants,
+  };
+  expect(replants - hitchReplants, `${label}: unexplained foot replants`).toBeLessThanOrEqual(1);
   // stance feet are world anchored: slide is a small fraction of the distance travelled
   worst.sort((p, q) => q.slide - p.slide);
   expect(

@@ -1,8 +1,8 @@
 import { Bone, Object3D, Vector3 } from 'three';
 import { config, type Legend } from '../data/gameConfig';
-import type { BallHandlingState } from '../simulation/ballHandling';
-import { smoothUnit } from '../simulation/ballHandling';
+import { dribbleHeight, smoothUnit, type BallHandlingState } from '../simulation/ballHandling';
 import { createArmContact } from './armContact';
+import { sampleDribbleHandMotion, type DribbleHandSample } from './dribbleHandTrajectory';
 
 export function createHandContactPose(model: Object3D, legend: Legend) {
   const bones: Record<string, Bone> = {};
@@ -24,6 +24,7 @@ export function createHandContactPose(model: Object3D, legend: Legend) {
   const left = new Vector3(),
     forward = new Vector3();
   const weights = [0, 0];
+  const motion: DribbleHandSample = { height: 0, retraction: 0, pitch: 0 };
   const memory = [0, 1].map(() => ({
     role: 'none',
     time: 0,
@@ -63,24 +64,24 @@ export function createHandContactPose(model: Object3D, legend: Legend) {
         if (active) {
           if (dribbling && controlled) {
             const shape = config.ballControl[legend];
+            const profile = config.animation.dribbleHand[legend];
+            sampleDribbleHandMotion(legend, state.phase, motion);
             target
               .copy(floor)
               .addScaledVector(left, sign * shape.hipSide)
               .addScaledVector(forward, shape.dribbleForward);
-            const contact =
-              state.phase < 0.16
-                ? 1 - smoothUnit(state.phase / 0.16)
-                : state.phase > 0.84
-                  ? smoothUnit((state.phase - 0.84) / 0.16)
-                  : 0;
+            const contact = 1 - motion.retraction;
             target.x += (ball.x - target.x) * contact;
             target.z += (ball.z - target.z) * contact;
-            target.y =
-              floor.y +
-              shape.dribbleTop +
-              config.ball.radius -
-              Math.min(0.06, Math.max(0, floor.y + shape.dribbleTop - ball.y)) * contact;
-            normal.set(0, -1, 0);
+            target.addScaledVector(left, -sign * profile.retractSide * motion.retraction);
+            target.addScaledVector(forward, -profile.retractForward * motion.retraction);
+            // Preserve the existing catch/entry blend. Only the presentation offset
+            // is changed; ball position and velocity retain their single owner.
+            const idealBallY =
+              floor.y + dribbleHeight(state.phase, shape.dribbleTop, config.ball.radius);
+            target.y = floor.y + motion.height + (ball.y - idealBallY) * contact;
+            normal.copy(forward).multiplyScalar(Math.sin(motion.pitch));
+            normal.y = -Math.cos(motion.pitch);
             finger.copy(forward);
             pole.copy(left).multiplyScalar(sign).addScaledVector(forward, 0.3);
             pole.y = -0.1;

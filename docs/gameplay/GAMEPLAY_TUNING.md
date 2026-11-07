@@ -190,3 +190,14 @@ Postojeća pravila za Zustand/React, keš resursa i frame petlju ostaju u
 [code review dokumentu](../code-review.md). Rig popravke i granice su u
 [skinning izveštaju](../shaq-finger-skinning-fix.md); nije potrebno duplirati ih
 ili smanjivati modele radi ovog plana.
+
+## Dopuna S01 — fazna šaka
+
+S01 dodaje `animation.dribbleHand`: `releasePhase` 0.12, `followThroughPhase` 0.30,
+`recoveryPhase` 0.52 i `catchPhase` 0.92 (udeli postojećeg ciklusa od 0.6 s),
+`wristPitch` 0.12 rad. Profili `shaq` i `chuck` imaju `drop/retractSide/retractForward`
+0.14/0.10/0.16 m i 0.13/0.08/0.14 m. Potrošači su `dribbleHandTrajectory` i
+`handContactPose`; ovo menja prezentaciju ruke, ne putanju lopte.
+
+Merenja, kontaktni prozori i ograničenja su u [S01 izveštaju](S01_IMPLEMENTATION_REPORT.md).
+Istorijski pregled vrednosti `465f6e0` iznad ostaje sačuvan.
