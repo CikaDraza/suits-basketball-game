@@ -1,0 +1,35 @@
+{
+  "file": "charles_barkley.glb",
+  "result": "passed",
+  "triangles": 14629,
+  "height_m": 1.9799999999999995,
+  "bone_count": 65,
+  "texture_sizes": [
+    [
+      2048,
+      2048
+    ]
+  ],
+  "maximum_control_displacement_m": {
+    "eyeBlinkLeft": 0.008716023527085781,
+    "eyeBlinkRight": 0.008399276994168758,
+    "jawOpen": 0.016857095062732697,
+    "eyeLookLeft": 0.003536541247740388,
+    "eyeLookRight": 0.003536535194143653,
+    "eyeLookUp": 0.002600258681923151,
+    "eyeLookDown": 0.002600273583084345
+  },
+  "animation_clips": [
+    {
+      "name": "FaceDemo",
+      "duration_seconds": 4.0,
+      "morph_channels": 6,
+      "body_transform_channels": 0,
+      "weight_range": [
+        0.0,
+        1.0
+      ]
+    }
+  ],
+  "scope": "GLB geometry, weights, neutral facial state, nonzero finite morphs and facial-only animation channels. Visual previews verify appearance; no game project supplied."
+}

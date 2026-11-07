@@ -1,0 +1,129 @@
+{
+  "new_round_credits": 160,
+  "previous_round_credits": 205,
+  "total_credits": 365,
+  "last_verified_balance": 635,
+  "frozen": 0,
+  "tasks": [
+    {
+      "character": "Shaq",
+      "task_id": "9c29d8f3-49c8-4788-8112-4f486a8d04b8",
+      "type": "generate_image",
+      "credits": 5
+    },
+    {
+      "character": "Shaq",
+      "task_id": "bdaafdd2-5cbe-4ee5-9439-0969b040be94",
+      "type": "generate_image",
+      "credits": 5
+    },
+    {
+      "character": "Shaq",
+      "task_id": "a798ef35-a0cd-4d3d-b5aa-afaf818baaaa",
+      "type": "generate_image",
+      "credits": 10
+    },
+    {
+      "character": "Shaq",
+      "task_id": "0bdefcc1-70d9-4e6c-be1f-cd66adbcb7e2",
+      "type": "image_to_model",
+      "credits": 50
+    },
+    {
+      "character": "Shaq",
+      "task_id": "d9e8c2e2-df54-4c31-932e-cc40c65fe670",
+      "type": "animate_prerigcheck",
+      "credits": 0
+    },
+    {
+      "character": "Shaq",
+      "task_id": "aacf0761-8ae3-4975-a8f5-d927017cf7c9",
+      "type": "animate_rig",
+      "credits": 25
+    },
+    {
+      "character": "Shaq",
+      "task_id": "997c1fad-db24-4eca-b7a5-4bafcb7065c2",
+      "type": "convert_model",
+      "credits": 10
+    },
+    {
+      "character": "Shaq",
+      "task_id": "704a2567-f53b-454c-8914-1489ea0c86b9",
+      "type": "convert_model",
+      "credits": 5
+    },
+    {
+      "character": "Charles",
+      "task_id": "7bc64986-540c-4354-b458-d54d97773b02",
+      "type": "generate_image",
+      "credits": 10
+    },
+    {
+      "character": "Charles",
+      "task_id": "b8dcd3b8-207c-468a-8c63-4586d7ccfc9e",
+      "type": "image_to_model",
+      "credits": 50
+    },
+    {
+      "character": "Charles",
+      "task_id": "7b2a3952-d91d-41c9-b676-fca056efac28",
+      "type": "animate_prerigcheck",
+      "credits": 0
+    },
+    {
+      "character": "Charles",
+      "task_id": "31cf3661-497c-4e1b-84d8-4b0845b86488",
+      "type": "animate_rig",
+      "credits": 25
+    },
+    {
+      "character": "Charles",
+      "task_id": "a0750a7e-4012-4e54-a204-f5e85fc6fa98",
+      "type": "convert_model",
+      "credits": 10
+    },
+    {
+      "character": "Shaq",
+      "task_id": "71dc830b-c246-4101-bc5c-878e43fdab5f",
+      "type": "generate_image",
+      "credits": 10,
+      "round": "Proper mesh heads"
+    },
+    {
+      "character": "Shaq",
+      "task_id": "13c22e21-0dfa-44e7-a43f-ca52e7cf9533",
+      "type": "generate_multiview_image",
+      "credits": 10,
+      "round": "Proper mesh heads"
+    },
+    {
+      "character": "Shaq",
+      "task_id": "257f4a93-e102-4435-bab2-5d5a455b6364",
+      "type": "multiview_to_model",
+      "credits": 60,
+      "round": "Proper mesh heads"
+    },
+    {
+      "character": "Charles",
+      "task_id": "6d87831a-3f8a-45ab-94fd-12e3ebd3a4c8",
+      "type": "generate_image",
+      "credits": 10,
+      "round": "Proper mesh heads"
+    },
+    {
+      "character": "Charles",
+      "task_id": "16c959ce-dcef-4a17-8cc7-abf3d2bb9d59",
+      "type": "generate_multiview_image",
+      "credits": 10,
+      "round": "Proper mesh heads"
+    },
+    {
+      "character": "Charles",
+      "task_id": "f64da97f-1f31-49e7-90de-4fbd982d1693",
+      "type": "multiview_to_model",
+      "credits": 60,
+      "round": "Proper mesh heads"
+    }
+  ]
+}

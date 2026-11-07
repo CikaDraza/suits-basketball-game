@@ -1,0 +1,44 @@
+{
+  "file": "shaquille_oneal.glb",
+  "bone_count": 65,
+  "rest_vs_default_maximum_error_m": 5.587588984954436e-06,
+  "deformation_checks": [
+    {
+      "bone": "LeftForeArm",
+      "moved_vertices": 2515,
+      "maximum_displacement_m": 0.1992490741847761
+    },
+    {
+      "bone": "RightForeArm",
+      "moved_vertices": 2515,
+      "maximum_displacement_m": 0.19972679788260203
+    },
+    {
+      "bone": "LeftLeg",
+      "moved_vertices": 1206,
+      "maximum_displacement_m": 0.2337357103187577
+    },
+    {
+      "bone": "RightLeg",
+      "moved_vertices": 4615,
+      "maximum_displacement_m": 0.2351425307838696
+    },
+    {
+      "bone": "LeftFoot",
+      "moved_vertices": 1007,
+      "maximum_displacement_m": 0.1243925697912018
+    },
+    {
+      "bone": "RightFoot",
+      "moved_vertices": 4294,
+      "maximum_displacement_m": 0.1247960881237229
+    },
+    {
+      "bone": "Head",
+      "moved_vertices": 13858,
+      "maximum_displacement_m": 0.0750159524761644
+    }
+  ],
+  "result": "passed",
+  "scope": "Asset import and individual joint deformation; no game project or locomotion clips supplied."
+}

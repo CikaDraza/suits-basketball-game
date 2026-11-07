@@ -1,0 +1,35 @@
+{
+  "file": "shaquille_oneal.glb",
+  "result": "passed",
+  "triangles": 14492,
+  "height_m": 2.159999999999822,
+  "bone_count": 65,
+  "texture_sizes": [
+    [
+      2048,
+      2048
+    ]
+  ],
+  "maximum_control_displacement_m": {
+    "eyeBlinkLeft": 0.007159741595387459,
+    "eyeBlinkRight": 0.0071645015850663185,
+    "jawOpen": 0.01682923547923565,
+    "eyeLookLeft": 0.0028712130151689053,
+    "eyeLookRight": 0.002871210454031825,
+    "eyeLookUp": 0.0023793161381036043,
+    "eyeLookDown": 0.0023794777225703
+  },
+  "animation_clips": [
+    {
+      "name": "FaceDemo",
+      "duration_seconds": 4.0,
+      "morph_channels": 6,
+      "body_transform_channels": 0,
+      "weight_range": [
+        0.0,
+        1.0
+      ]
+    }
+  ],
+  "scope": "GLB geometry, weights, neutral facial state, nonzero finite morphs and facial-only animation channels. Visual previews verify appearance; no game project supplied."
+}

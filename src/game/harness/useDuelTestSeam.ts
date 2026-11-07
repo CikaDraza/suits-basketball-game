@@ -1,0 +1,133 @@
+import { useEffect } from 'react';
+import { useThree } from '@react-three/fiber';
+import { Vector3 } from 'three';
+import { config, level } from '../data/gameConfig';
+import { duel, bodies, resetDuel } from '../entities/Duel';
+import { useGameStore } from '../state/gameStore';
+import { useInputStore } from '../state/inputStore';
+import { useHarnessStore } from '../state/harnessStore';
+import { extendTestSeam } from './exposeTestSeam';
+import { readCharacterPose } from './characterPose';
+
+/** Keep test adapters out of the scene's rendering and simulation components. */
+export function useDuelTestSeam(): void {
+  const camera = useThree((state) => state.camera);
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+
+  useEffect(() => {
+    const wait = (frames = 1) =>
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, (Math.max(0, frames) * 1000) / config.physics.timestep);
+      });
+    const projection = new Vector3();
+    const seam = extendTestSeam({
+      ready: true,
+      requestInboundPass: (receiver = 0) => useGameStore.getState().requestInboundPass(receiver),
+      getCharacterPose: (slot) => readCharacterPose(scene, slot, bodies.players[slot]),
+      getState: () => ({
+        ...useGameStore.getState(),
+        input: useInputStore.getState(),
+        player: {
+          ...duel.players[0],
+          grip: { ...duel.players[0].grip },
+          y: bodies.players[0]?.translation().y,
+        },
+        opponent: {
+          ...duel.players[1],
+          grip: { ...duel.players[1].grip },
+          y: bodies.players[1]?.translation().y,
+        },
+        ball: {
+          ...duel.ball,
+          state: duel.ballState,
+          owner: duel.owner,
+          velocity: bodies.ball?.linvel(),
+          gravityScale: bodies.ball?.gravityScale(),
+          sensor: bodies.ball?.collider(0).isSensor(),
+        },
+        inboundPass: duel.inboundPass ? structuredClone(duel.inboundPass) : null,
+        passes: duel.passes,
+        chestPasses: duel.chestPasses,
+        lobPasses: duel.lobPasses,
+        passDeflections: duel.passDeflections,
+        inbound:
+          duel.ballState === 'inbound'
+            ? { stage: duel.inboundStage, clock: duel.inboundClock, owner: duel.inboundOwner }
+            : null,
+        catches: duel.catches,
+        jabs: duel.jabs,
+        bites: duel.bites,
+        dribbles: duel.dribbles,
+        violations: duel.violations,
+        bumps: duel.bumps,
+        shots: duel.shots,
+        dunks: duel.dunks,
+        smashes: duel.smashes,
+        flops: duel.flops,
+        fumbles: duel.fumbles,
+        pickups: duel.pickups,
+        interceptions: duel.interceptions,
+        rim: duel.rim,
+        time: duel.time,
+      }),
+      getEntities: () => [
+        { id: 'player', type: 'player', position: bodies.players[0]?.translation() },
+        { id: 'opponent', type: 'opponent', position: bodies.players[1]?.translation() },
+        { id: 'ball', type: duel.ballState, position: bodies.ball?.translation() },
+        { id: 'hoop', type: 'static', position: level.hoop },
+        { id: 'court', type: 'static', active: true },
+      ],
+      project: (position) => {
+        projection.set(...position).project(camera);
+        const rect = gl.domElement.getBoundingClientRect();
+        return {
+          x: rect.left + ((projection.x + 1) / 2) * rect.width,
+          y: rect.top + ((1 - projection.y) / 2) * rect.height,
+        };
+      },
+      setLegend: (slot, legend) => useGameStore.getState().choose(slot, legend),
+      getGrip: (slot) => ({ grip: { ...duel.players[slot].grip }, ball: { ...duel.ball } }),
+      press: async (action, frames = 1) => {
+        const key =
+          action === 'Q' || action === 'post' || action === 'actionB' ? 'actionB' : 'actionA';
+        useInputStore.getState().setAction(key, true);
+        try {
+          await wait(frames);
+        } finally {
+          useInputStore.getState().setAction(key, false);
+        }
+        await wait(2);
+      },
+      step: wait,
+      reset: async (seed = 42, scenario) => {
+        useHarnessStore.getState().setSeed(seed);
+        useGameStore.getState().reset();
+        resetDuel(seed, scenario);
+        await wait(2);
+      },
+      teleport: (id, position) => {
+        const body =
+          id === 'player'
+            ? bodies.players[0]
+            : id === 'opponent'
+              ? bodies.players[1]
+              : id === 'ball'
+                ? bodies.ball
+                : null;
+        body?.setTranslation({ x: position[0], y: position[1], z: position[2] }, true);
+        body?.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        if (id === 'ball') {
+          duel.ballState = 'loose';
+          duel.owner = -1;
+          duel.looseTimer = config.ball.pickupDelay;
+          body?.setGravityScale(1, true);
+        }
+      },
+    });
+
+    return () => {
+      if (window.__TEST__ === seam) delete window.__TEST__;
+    };
+  }, [camera, gl, scene]);
+}

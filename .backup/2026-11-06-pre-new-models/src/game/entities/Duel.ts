@@ -1,0 +1,96 @@
+import type { RapierRigidBody } from '@react-three/rapier';
+import { config as c, level, type Legend } from '../data/gameConfig';
+import { useGameStore } from '../state/gameStore';
+import { useInputStore } from '../state/inputStore';
+import { useHarnessStore } from '../state/harnessStore';
+export type Mode='idle'|'post'|'spin'|'contest'|'shoot'|'down'|'stun'|'dunk'|'exhausted';
+export type Fighter={x:number;z:number;energy:number;mode:Mode;angle:number;charge:number;timer:number;grace:number;spin:number;vx:number;vz:number;hand:number;lastQ:number;lastR:number;taps:number;prevQ:boolean;prevR:boolean;prevX:number;aiClock:number;rest:boolean;clumsy:number;moving:number;cooldown:number;steal:number;flopClock:number;legend:Legend};
+const fighter=(i:number,legend:Legend):Fighter=>({x:level.spawns[i].x,z:level.spawns[i].z,energy:c.player.energyMax,mode:'idle',angle:Math.PI,charge:0,timer:0,grace:0,spin:0,vx:0,vz:0,hand:1,lastQ:-10,lastR:-10,taps:0,prevQ:false,prevR:false,prevX:0,aiClock:0,rest:false,clumsy:0,moving:0,cooldown:0,steal:0,flopClock:0,legend});
+export const duel={time:0,players:[fighter(0,'shaq'),fighter(1,'chuck')],owner:0,lastTouch:0,ballState:'held',ball:{x:0,y:1,z:0},flight:{sx:0,sy:0,sz:0,tx:0,ty:0,tz:0,t:0,duration:c.shots.flightDuration,arc:c.shots.arcHeight,made:false,points:1,shooter:0},score:[0,0],bumps:0,shots:0,dunks:0,smashes:0,flops:0,fumbles:0,interceptions:0,pickups:0,shake:0,rim:0,event:{x:0,z:0,t:-10,color:'#f1a757'},message:'Big suits. Bigger problems.',messageUntil:c.effects.textDuration,revision:-1,resetTimer:0,nextOwner:0,looseTimer:0,inboundTimer:0,inboundOwner:0,hudTimer:0,seed:42,p2Human:false};
+export const bodies:{players:(RapierRigidBody|null)[];ball:RapierRigidBody|null}={players:[null,null],ball:null};
+let audio:AudioContext|null=null;
+export function enableAudio(){if(!audio){audio=new AudioContext();}if(audio.state==='suspended')void audio.resume();}
+function sound(kind:string){if(!audio||audio.state!=='running'||!useGameStore.getState().sound)return;const osc=audio.createOscillator(),gain=audio.createGain();osc.connect(gain);gain.connect(audio.destination);const t=audio.currentTime;osc.type=kind==='swish'?'triangle':'sine';const freq=kind==='swish'?720:kind==='rim'?270:kind==='dribble'?150:kind==='post'?115:kind==='contest'?340:kind==='flop'?65:90;osc.frequency.setValueAtTime(freq,t);osc.frequency.exponentialRampToValueAtTime(freq*0.35,t+0.16);gain.gain.setValueAtTime(c.effects.soundVolume,t);gain.gain.exponentialRampToValueAtTime(0.001,t+0.22);osc.onended=()=>{osc.disconnect();gain.disconnect();};osc.start(t);osc.stop(t+0.23);}
+export function closeAudio(){if(audio){void audio.close();audio=null;}}
+const random=()=>{duel.seed=(Math.imul(1664525,duel.seed)+1013904223)>>>0;return duel.seed/4294967296;};
+const dist=(a:{x:number;z:number},b:{x:number;z:number})=>Math.hypot(a.x-b.x,a.z-b.z);
+const rim={x:level.hoop.x,z:level.hoop.z};
+function say(text:string){duel.message=text;duel.messageUntil=duel.time+c.effects.textDuration;}
+function impact(p:Fighter,heavy=false){duel.event={x:p.x,z:p.z,t:duel.time,color:heavy?'#f15a36':'#ffd49a'};duel.shake=heavy?c.effects.dunkShake:c.effects.shakeIntensity;sound(heavy?'flop':'bump');}
+export function resetDuel(seed=42,scenario?:string){
+ const legends=useGameStore.getState().legends;duel.players=[fighter(0,legends[0]),fighter(1,legends[1])];duel.time=0;duel.owner=level.initialOwner;duel.ballState='held';duel.score=[0,0];duel.seed=seed;duel.bumps=0;duel.shots=0;duel.dunks=0;duel.smashes=0;duel.flops=0;duel.fumbles=0;duel.pickups=0;duel.interceptions=0;duel.resetTimer=0;duel.looseTimer=0;duel.shake=0;duel.rim=0;duel.p2Human=false;duel.message='Big suits. Bigger problems.';duel.messageUntil=3;duel.revision=useGameStore.getState().revision;
+ duel.lastTouch=level.initialOwner;duel.event.t=-10;duel.hudTimer=0;duel.messageUntil=c.effects.textDuration;
+ bodies.players.forEach((b,i)=>{b?.setTranslation(level.spawns[i],true);b?.setLinvel({x:0,y:0,z:0},true);b?.setAngvel({x:0,y:0,z:0},true);});
+ bodies.ball?.setLinvel({x:0,y:0,z:0},true);useInputStore.getState().flush();useGameStore.setState({screen:'playing',score:0,cpuScore:0});if(scenario==='inbound')inbound(0);
+}
+function loose(i:number){const p=duel.players[i];duel.lastTouch=i;duel.owner=-1;duel.ballState='loose';duel.looseTimer=c.ball.pickupDelay;bodies.ball?.setGravityScale(1,true);bodies.ball?.setTranslation({x:p.x+p.hand*c.physics.radius,y:c.ball.holdHeight,z:p.z},true);bodies.ball?.setLinvel({x:p.hand*c.ball.looseKick,y:c.ball.dropUpVelocity,z:c.ball.looseKick},true);p.charge=0;p.mode='idle';}
+function flop(i:number){const p=duel.players[i];if(p.cooldown>0||p.mode==='down')return;p.mode='down';p.timer=c.player.downDuration;p.energy=Math.max(0,p.energy-c.player.flopCost);p.charge=0;duel.flops++;if(duel.owner===i)loose(i);p.mode='down';impact(p,true);say(i===0?'Taking a business trip.':'Chuck: “I meant to do that.”');}
+function smash(i:number){const p=duel.players[i],o=duel.players[1-i];if(duel.owner!==i||dist(p,o)>c.ball.smashRange)return;duel.smashes++;p.energy=Math.max(0,p.energy-c.player.smashCost);p.charge=0;p.mode='idle';o.mode='stun';o.timer=c.player.stunDuration;const d=dist(p,o)||1;o.vx=(o.x-p.x)/d*c.ball.smashImpulse;o.vz=(o.z-p.z)/d*c.ball.smashImpulse;duel.ballState='smash';duel.flight={...duel.flight,sx:p.x,sy:c.ball.holdHeight,sz:p.z,tx:o.x,ty:c.ball.smashTargetHeight,tz:o.z,t:0,duration:c.ball.smashReturn,shooter:i};impact(o,true);say('Special delivery. No signature needed.');}
+function shoot(i:number){const p=duel.players[i],o=duel.players[1-i];if(duel.owner!==i||duel.ballState!=='held')return;const distance=dist(p,rim),perfect=Math.abs(p.charge-c.shots.perfectTime)<=c.shots.perfectWindow;const dunk=distance<c.shots.dunkRange&&p.energy>c.shots.dunkEnergy;const contest=o.mode==='contest'&&dist(p,o)<c.ai.contestRange;const stat=c.player[p.legend];let accuracy=(c.shots.baseAccuracy+(perfect?c.shots.perfectBonus:0)-distance*c.shots.distancePenalty-(contest?c.shots.contestPenalty:0)-(p.energy<c.player.exhaustedThreshold?c.shots.exhaustionPenalty:0))*stat.accuracy;if(dunk)accuracy=c.shots.dunkAccuracy-(contest?c.shots.contestPenalty*c.shots.dunkContestMultiplier:0);const made=random()<Math.max(c.shots.minAccuracy,Math.min(c.shots.maxAccuracy,accuracy));duel.shots++;if(dunk){duel.dunks++;p.mode='dunk';p.timer=c.shots.flightDuration;duel.rim=1;impact(p,true);}else{p.mode='shoot';p.timer=c.shots.flightDuration;}p.energy=Math.max(0,p.energy-c.player.shotCost);duel.flight={sx:p.x,sy:stat.height-c.shots.releaseOffset,sz:p.z,tx:rim.x+(made?0:(random()-0.5)*c.shots.missOffset*2),ty:level.hoop.y,tz:rim.z+(made?0:c.shots.missOffset),t:0,duration:c.shots.flightDuration,arc:dunk?c.shots.dunkArc:distance<c.shots.hookRange?c.shots.hookArc:c.shots.arcHeight,made,points:distance>=c.shots.longRange?c.score.outside:c.score.inside,shooter:i};duel.lastTouch=i;duel.owner=-1;duel.ballState='shot';p.charge=0;say(dunk?'HOSTILE TAKEOVER.':perfect?contest?'Perfect release. Heavy traffic.':'Green release. Cash that check.':contest?'Contested! That suit is in your face.':distance<c.shots.hookRange?'Baby hook. Grown-man problems.':'Put it on the expense account.');}
+function inbound(owner:number){duel.owner=-1;duel.inboundOwner=owner;duel.ballState='inbound';duel.inboundTimer=0;bodies.ball?.setGravityScale(0,true);bodies.ball?.setTranslation(level.inbound,true);bodies.ball?.setLinvel({x:0,y:0,z:0},true);say('Out of bounds. Fight for the inbound.');}
+function pass(){const p=duel.players[duel.inboundOwner];duel.ballState='pass';duel.flight={...duel.flight,sx:level.inbound.x,sy:level.inbound.y,sz:level.inbound.z,tx:p.x,ty:c.ball.passCatchHeight,tz:p.z,t:0,duration:c.ball.inboundDuration,shooter:duel.inboundOwner};sound('swish');}
+function controls(i:number,dt:number):{x:number;z:number;q:boolean;r:boolean}{
+ const input=useInputStore.getState();const pads=navigator.getGamepads?.()||[];const pad=pads[i];if(pad&&(Math.hypot(pad.axes[0]||0,pad.axes[1]||0)>c.player.minMove||pad.buttons[2]?.pressed||pad.buttons[3]?.pressed)){if(i===1)duel.p2Human=true;return{x:pad.axes[0]||0,z:-(pad.axes[1]||0),q:!!pad.buttons[3]?.pressed,r:!!pad.buttons[2]?.pressed};}
+ if(i===0)return{x:input.moveX,z:input.moveZ,q:input.actionB,r:input.actionA};
+ if(duel.p2Human&&!pad)duel.p2Human=false;if(duel.p2Human)return{x:0,z:0,q:!!pad?.buttons[3]?.pressed,r:!!pad?.buttons[2]?.pressed};
+ if(useHarnessStore.getState().testMode)return{x:0,z:0,q:false,r:false};
+ const p=duel.players[i],o=duel.players[0];p.aiClock+=dt;p.flopClock+=dt;let tx=p.x,tz=p.z,r=false,q=false;p.rest=p.energy<c.ai.restThreshold?true:p.energy>c.ai.restUntil?false:p.rest;
+ if(p.mode==='down')return{x:Math.sin(duel.time*c.ai.mashMoveRate),z:0,q:Math.sin(duel.time*c.ai.mashRate)>0,r:Math.cos(duel.time*c.ai.mashRate)>0};
+ if(p.rest)return{x:0,z:0,q:false,r:o.charge>0};
+ if(duel.owner===i){const distance=dist(p,rim);tx=Math.sin(duel.time*c.ai.offenseJuke)*c.ai.jukeAmplitude;tz=level.hoop.z+c.ai.rimApproach;if(distance<c.ai.shootDistance){p.aiClock+=dt;r=p.aiClock>c.ai.shootDelay&&p.aiClock<c.ai.shootDelay+c.ai.charge;if(p.aiClock>c.ai.shootDelay+c.ai.charge+c.ai.reaction)p.aiClock=0;}q=dist(p,o)<c.ai.defenseDistance&&p.mode==='idle';}
+ else if(duel.owner===0){const d=dist(o,rim)||1;tx=o.x+(rim.x-o.x)/d*c.ai.defenseDistance;tz=o.z+(rim.z-o.z)/d*c.ai.defenseDistance;r=o.charge>0&&dist(p,o)<c.ai.contestRange;if(p.flopClock>c.ai.flopInterval&&dist(p,o)<c.player.tripDistance&&o.mode==='spin'&&random()<c.ai.flopChance){flop(i);p.flopClock=0;}}
+ else if(duel.ballState==='inbound'){tx=duel.players[duel.inboundOwner].x+c.ai.inboundOffsetX;tz=duel.players[duel.inboundOwner].z+c.ai.inboundOffsetZ;}
+ else if(duel.ballState==='shot'){tx=duel.flight.tx;tz=duel.flight.tz+c.ai.reboundOffsetZ;}
+ else{tx=duel.ball.x;tz=duel.ball.z;}
+ const dx=tx-p.x,dz=tz-p.z,d=Math.hypot(dx,dz);const cos=Math.cos(c.camera.inputAngle),sin=Math.sin(c.camera.inputAngle);return{x:d>c.ai.pursuitDeadzone?(dx*cos-dz*sin)/d:0,z:d>c.ai.pursuitDeadzone?-(dx*sin+dz*cos)/d:0,q,r};
+}
+export function tickDuel(delta:number){
+ if(useGameStore.getState().screen!=='playing'||(window as unknown as {__PAUSED__?:boolean}).__PAUSED__)return;if(duel.revision!==useGameStore.getState().revision)resetDuel(useHarnessStore.getState().seed);
+ const dt=Math.min(delta,3/c.physics.timestep);duel.time+=dt;duel.rim*=Math.exp(-c.effects.rimDecay*dt);duel.looseTimer=Math.max(0,duel.looseTimer-dt);
+ duel.players.forEach((p,i)=>{const b=bodies.players[i];if(b){const v=b.translation();p.x=v.x;p.z=v.z;}});
+ duel.players.forEach((p,i)=>{
+ const b=bodies.players[i];if(!b)return;const input=controls(i,dt),qDown=input.q&&!p.prevQ,rDown=input.r&&!p.prevR,rUp=!input.r&&p.prevR;const o=duel.players[1-i];p.timer=Math.max(0,p.timer-dt);p.grace=Math.max(0,p.grace-dt);p.cooldown=Math.max(0,p.cooldown-dt);p.steal+=dt;p.clumsy+=dt;
+ if(p.mode==='down'){if(qDown||rDown||(Math.abs(input.x)>c.player.minMove&&Math.abs(p.prevX)<c.player.minMove))p.timer=Math.max(0,p.timer-c.player.mashRecovery);if(p.timer<=0){p.mode='idle';p.grace=c.player.modeCooldown;say('Back on the payroll.');}}
+ else if(p.mode==='stun'&&p.timer<=0)p.mode='idle';
+ else if((p.mode==='shoot'||p.mode==='dunk')&&p.timer<=0)p.mode='idle';
+ const disabled=p.mode==='down'||p.mode==='stun'||p.mode==='dunk';
+ if(!disabled){
+ if(qDown){if(duel.ballState==='inbound'&&(i===duel.inboundOwner||i===0)){pass();}
+ else if(duel.time-p.lastQ<c.player.doubleTapWindow){flop(i);}
+ else if(duel.owner===i&&p.mode==='post'&&Math.abs(input.x)>c.player.minMove&&p.energy>=c.player.spinCost){p.mode='spin';p.spin=c.player.spinDuration;p.energy-=c.player.spinCost;const d=dist(p,rim)||1;p.vx=(rim.x-p.x)/d*c.player.spinSpeed+input.x*c.player.jukeImpulse;p.vz=(rim.z-p.z)/d*c.player.spinSpeed;say('Spin cycle. Dry-clean only.');impact(p);}
+ else{p.mode=p.mode==='post'?'idle':'post';sound('post');say(i===0?'Back down. Business is personal.':'Chuck: “You cannot move this office.”');}p.lastQ=duel.time;}
+ if(rDown){p.taps=duel.time-p.lastR<c.player.smashTapWindow?p.taps+1:1;p.lastR=duel.time;if(p.taps>=3){smash(i);p.taps=0;}else if(duel.owner===i)p.charge=0;}
+ if(input.r&&duel.owner===i&&duel.ballState==='held'&&p.taps<3){p.charge=Math.min(c.shots.raiseDuration,p.charge+dt);}
+ else if(input.r&&duel.owner!==i){if(p.mode!=='contest')sound('contest');p.mode='contest';}
+ if(rUp){if(p.charge>=c.shots.minHold)shoot(i);else p.charge=0;if(p.mode==='contest')p.mode='idle';}
+ if(Math.sign(input.x)!==Math.sign(p.prevX)&&Math.abs(input.x)>c.player.minMove){p.hand=Math.sign(input.x);if(p.mode==='post')p.vx+=p.hand*c.player.jukeImpulse;}
+ }
+ const moving=Math.min(1,Math.hypot(input.x,input.z));p.moving=disabled?0:moving;const stat=c.player[p.legend];let speed=stat.speed*(p.energy<c.player.exhaustedThreshold?c.player.exhaustedSpeed:1)*(p.mode==='post'?c.player.postSpeed:1)*(p.charge>0?c.player.chargingSpeed:1);
+ let x=0,z=0;if(!disabled){const cos=Math.cos(c.camera.inputAngle),sin=Math.sin(c.camera.inputAngle);x=(input.x*cos-input.z*sin)*speed;z=(-input.x*sin-input.z*cos)*speed;if(moving>0&&p.mode!=='post')p.angle=Math.atan2(x,z);if(p.mode==='post')p.angle=Math.atan2(rim.x-p.x,rim.z-p.z)+Math.PI;if(p.charge>0||p.mode==='contest')p.angle=Math.atan2(rim.x-p.x,rim.z-p.z);}
+ if(p.mode==='spin'){p.spin-=dt;if(p.spin<=0){p.mode='idle';p.vx*=c.player.spinEndRetention;p.vz*=c.player.spinEndRetention;if(duel.owner===i&&dist(p,rim)<c.shots.dunkRange){p.charge=c.shots.perfectTime;shoot(i);}}else p.angle+=dt*c.player.spinTurnRate;}
+ p.vx*=Math.exp(-c.physics.damping*dt);p.vz*=Math.exp(-c.physics.damping*dt);b.setLinvel({x:x+p.vx,y:b.linvel().y,z:z+p.vz},true);
+ const bounds=level.bounds;const bx=Math.max(bounds.minX,Math.min(bounds.maxX,p.x)),bz=Math.max(bounds.minZ,Math.min(bounds.maxZ,p.z));if(bx!==p.x||bz!==p.z)b.setTranslation({x:bx,y:c.physics.bodyY,z:bz},true);
+ p.energy=Math.max(0,Math.min(c.player.energyMax,p.energy+dt*(moving>c.player.drainThreshold&&!disabled?-(c.player.moveDrain+(p.mode==='post'?c.player.postDrain:0)):moving>0?c.player.slowRecovery:c.player.recovery)));
+ if(p.energy<c.player.exhaustedThreshold&&p.clumsy>c.player.fumbleInterval&&moving>c.player.drainThreshold&&!disabled){p.clumsy=0;if(random()<c.player.fumbleChance){duel.fumbles++;if(duel.owner===i)loose(i);p.mode='stun';p.timer=c.player.stunDuration;impact(p);say('Out of gas. In a three-piece suit.');}}
+ if(duel.owner===1-i&&input.r&&p.steal>c.ai.stealInterval&&dist(p,o)<c.ai.stealRange&&o.charge===0&&o.mode!=='post'){p.steal=0;if(random()<c.ai.stealChance){loose(1-i);say('Hostile acquisition. Loose ball!');}}
+ if(duel.owner<0&&(duel.ballState==='loose'||duel.ballState==='pass')&&duel.looseTimer<=0&&!disabled&&(moving>c.player.minMove||input.q||input.r||i===1)&&dist(p,duel.ball)<c.ball.reach&&duel.ball.y<c.ball.pickupHeight){if(duel.ballState==='pass'&&i!==duel.inboundOwner){duel.interceptions++;say('INTERCEPTED. Read the fine print.');}else say('Recovered. Back to work.');duel.pickups++;duel.owner=i;duel.ballState='held';p.mode='idle';p.charge=0;sound('dribble');}
+ p.prevQ=input.q;p.prevR=input.r;p.prevX=input.x;
+ });
+ const [a,b]=duel.players,d=dist(a,b)||0.001;
+ if(d<c.physics.radius*2+c.physics.contactPadding){duel.players.forEach((p,i)=>{const o=duel.players[1-i];if(o.mode==='down'&&p.moving>c.player.minMove&&p.mode!=='down'&&p.grace<=0){p.mode='down';p.timer=c.player.downDuration;if(duel.owner===i)loose(i);p.mode='down';impact(p,true);say('Trip hazard. No workers’ comp.');}else if(p.mode!=='down'&&p.mode!=='stun'&&p.moving>c.player.minMove&&p.cooldown<=0){const power=c.player[p.legend].power*(p.mode==='post'?c.player.postImpulse:c.player.normalImpulse)*(p.energy<c.player.exhaustedThreshold?c.player.exhaustedPush:1);const ratio=c.player[p.legend].mass/c.player[o.legend].mass;o.vx+=(o.x-p.x)/d*power*ratio;o.vz+=(o.z-p.z)/d*power*ratio;p.cooldown=c.player.bumpCooldown;duel.bumps++;impact(p);}});}
+ const ball=bodies.ball;
+ if(ball){
+ if(duel.ballState==='held'&&duel.owner>=0){duel.lastTouch=duel.owner;const p=duel.players[duel.owner];ball.setGravityScale(0,true);ball.setLinvel({x:0,y:0,z:0},true);const raise=Math.min(1,p.charge/c.shots.perfectTime);const y=p.charge>0?c.ball.holdHeight+raise*(c.player[p.legend].height-c.ball.foreheadOffset-c.ball.holdHeight):c.ball.radius+Math.abs(Math.cos(duel.time*c.ball.dribbleRate))*c.ball.dribbleHeight;const x=p.charge>0?p.x+Math.sin(p.angle)*c.physics.radius:p.x+Math.cos(p.angle)*p.hand*c.ball.handDistance;const z=p.charge>0?p.z+Math.cos(p.angle)*c.physics.radius:p.z-Math.sin(p.angle)*p.hand*c.ball.handDistance;ball.setTranslation({x,y,z},true);}
+ else if(duel.ballState==='shot'||duel.ballState==='pass'||duel.ballState==='smash'){
+ ball.setGravityScale(0,true);ball.setLinvel({x:0,y:0,z:0},true);const f=duel.flight;f.t+=dt;let t=Math.min(1,f.t/f.duration);if(duel.ballState==='smash')t=Math.sin(t*Math.PI);const arc=duel.ballState==='shot'?f.arc:duel.ballState==='pass'?c.ball.passArc:c.ball.smashArc;ball.setTranslation({x:f.sx+(f.tx-f.sx)*t,y:f.sy+(f.ty-f.sy)*t+Math.sin(t*Math.PI)*arc,z:f.sz+(f.tz-f.sz)*t},true);
+ if(f.t>=f.duration){if(duel.ballState==='smash'){duel.ballState='held';}
+ else if(duel.ballState==='pass'){duel.ballState='loose';duel.looseTimer=0;ball.setGravityScale(1,true);ball.setLinvel({x:0,y:0,z:-c.ball.looseKick},true);}
+ else if(f.made){duel.score[f.shooter]+=f.points;useGameStore.setState({score:duel.score[0],cpuScore:duel.score[1]});duel.rim=1;sound('swish');duel.ballState='scored';duel.resetTimer=c.shots.resetDelay;duel.nextOwner=1-f.shooter;ball.setGravityScale(1,true);ball.setLinvel({x:0,y:c.ball.scoreFallVelocity,z:0},true);say(f.shooter===0?'BUCKET. Retirement looks good.':'Chuck: “That’s barbecue chicken.”');if(duel.score[f.shooter]>=c.score.winTarget){useGameStore.setState({screen:f.shooter===0?'win':'gameover',finalScore:duel.score[0]});}}
+ else{duel.ballState='loose';duel.looseTimer=c.shots.looseDelay;ball.setGravityScale(1,true);ball.setLinvel({x:(random()-0.5)*c.ball.looseKick*2,y:c.ball.reboundUpVelocity,z:c.ball.looseKick},true);duel.rim=0.8;sound('rim');say('OFF THE IRON. Scramble!');}}
+ }
+ else if(duel.ballState==='inbound'){duel.inboundTimer+=dt;ball.setTranslation(level.inbound,true);if(duel.inboundTimer>c.ball.inboundAutoDelay)pass();}
+ else if(duel.ballState==='scored'){duel.resetTimer-=dt;if(duel.resetTimer<=0){duel.owner=duel.nextOwner;duel.ballState='held';duel.players.forEach(p=>{p.charge=0;if(p.mode!=='down')p.mode='idle';});say(duel.owner===0?'Your ball. Make it personal.':'CPU ball. Stand your ground.');}}
+ const v=ball.translation();duel.ball={x:v.x,y:v.y,z:v.z};const bounds=level.bounds;if(duel.ballState==='loose'&&(v.x<bounds.minX||v.x>bounds.maxX||v.z<bounds.minZ||v.z>bounds.maxZ||v.y<c.ball.outDepth))inbound(1-duel.lastTouch);
+ }
+ duel.hudTimer+=dt;if(duel.hudTimer>=c.effects.hudInterval){duel.hudTimer=0;useGameStore.setState({score:duel.score[0],cpuScore:duel.score[1],energies:[a.energy,b.energy],modes:[a.energy<c.player.exhaustedThreshold&&a.mode==='idle'?'exhausted':a.mode,b.energy<c.player.exhaustedThreshold&&b.mode==='idle'?'exhausted':b.mode],owner:duel.owner,ballState:duel.ballState,charge:a.charge,message:duel.time<duel.messageUntil?duel.message:'',cpu:!duel.p2Human});}
+}

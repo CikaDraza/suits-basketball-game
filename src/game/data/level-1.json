@@ -1,0 +1,13 @@
+{
+  "id": "the-last-dance",
+  "name": "NO FOULS",
+  "floor": { "position": [7, -0.2, 0], "halfExtents": [16, 0.2, 14] },
+  "bounds": { "minX": 0.15, "maxX": 13.85, "minZ": -7.35, "maxZ": 7.35 },
+  "spawns": [
+    { "x": 5.9, "y": 0.95, "z": 0.5 },
+    { "x": 4.3, "y": 0.95, "z": 0.2 }
+  ],
+  "hoop": { "x": 1.575, "y": 3.05, "z": 0, "boardX": 1.2, "baseX": -1.1 },
+  "inbound": { "x": 5.2, "y": 1.0, "z": 7.85 },
+  "initialOwner": 0
+}

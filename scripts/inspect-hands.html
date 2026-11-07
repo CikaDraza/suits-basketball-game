@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Shaq hand skinning comparison</title>
+    <style>
+      body {
+        margin: 0;
+        background: #151920;
+        color: #eee;
+        font: 15px system-ui;
+      }
+      header {
+        padding: 12px 24px;
+        display: flex;
+        justify-content: space-around;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: calc(100vh - 48px);
+      }
+      label {
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <header><label>Original skin weights</label><label>Repaired skin weights</label></header>
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+      import { MODEL_PATHS } from '../src/game/assets/manifest';
+      const base = import.meta.env.BASE_URL;
+      const candidate = new URLSearchParams(location.search).get('model') ?? MODEL_PATHS.shaq;
+      const loader = new GLTFLoader();
+      const models = await Promise.all([
+        loader.loadAsync(base + '.backup/2026-11-07-shaq-fingers/shaquille_oneal.glb'),
+        loader.loadAsync(base + candidate),
+      ]);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(innerWidth, innerHeight - 48);
+      renderer.setScissorTest(true);
+      document.body.appendChild(renderer.domElement);
+      const scenes = models.map(({ scene: model }) => {
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#252b35');
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x394252, 2));
+        const key = new THREE.DirectionalLight(0xffffff, 3);
+        key.position.set(1, 4, 2);
+        scene.add(key, model);
+        return scene;
+      });
+      const rest = models.map(({ scene }) => {
+        const map = new Map();
+        scene.traverse((o) => {
+          if (o.isBone)
+            map.set(o, { position: o.position.clone(), quaternion: o.quaternion.clone() });
+        });
+        return map;
+      });
+      const camera = new THREE.OrthographicCamera(-0.22, 0.22, 0.19, -0.19, 0.01, 10);
+      function render() {
+        for (let i = 0; i < 2; i++) {
+          const width = renderer.domElement.width / 2,
+            height = renderer.domElement.height;
+          renderer.setViewport(i * width, 0, width, height);
+          renderer.setScissor(i * width, 0, width, height);
+          renderer.render(scenes[i], camera);
+        }
+      }
+      window.__HAND_VIEW__ = {
+        ready: true,
+        pose({
+          view = 'Left',
+          side = 'Left',
+          finger = 'ALL',
+          axis = 'x',
+          angle = 0,
+          stage = 'chain',
+        } = {}) {
+          const rotation = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(axis === 'x' ? 1 : 0, axis === 'y' ? 1 : 0, axis === 'z' ? 1 : 0),
+            THREE.MathUtils.degToRad(angle),
+          );
+          for (const map of rest)
+            for (const [bone, initial] of map) {
+              bone.position.copy(initial.position);
+              bone.quaternion.copy(initial.quaternion);
+              const name = bone.name.replace(/^mixamorig:?/, '');
+              const selected =
+                finger === 'Wrist'
+                  ? name === side + 'Hand'
+                  : name.startsWith(side + 'Hand') &&
+                    (finger === 'ALL' || name.includes(finger)) &&
+                    /\d$/.test(name) &&
+                    (stage === 'chain' ? !name.endsWith('4') : name.endsWith(String(stage)));
+              if (selected) bone.quaternion.multiply(rotation);
+            }
+          const target = new THREE.Vector3(view === 'Left' ? 1.025 : -1.025, 1.765, -0.085);
+          camera.position.copy(target).add(new THREE.Vector3(0, 0.55, 0.3));
+          camera.up.set(0, 0, -1);
+          camera.lookAt(target);
+          camera.updateProjectionMatrix();
+          render();
+          return true;
+        },
+      };
+      window.__HAND_VIEW__.pose();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,92 @@
+{
+  "sourceSha256": "3d687fbc0d8b47716bd73e255086229a2f134cd118ee54e48a74e54d44e5ee27",
+  "repairedSha256": "2501bf68c682e1f412df660aa239efec0865eedc3f9c042cc44ebcd9c850750b",
+  "byteLength": 12641480,
+  "jointCount": 65,
+  "modifiedVertices": 4638,
+  "modifiedHandAndWristVertices": 4361,
+  "remoteVerticesWithInvalidHandWeightsRemoved": 277,
+  "verticesReassignedFromWrongFinger": 21,
+  "removedInfluences": 3240,
+  "largestInvalidInfluences": [
+    {
+      "vertex": 9148,
+      "joint": "mixamorig:LeftHandPinky4",
+      "weight": 0.24698656797409058
+    },
+    {
+      "vertex": 9149,
+      "joint": "mixamorig:LeftHandPinky4",
+      "weight": 0.24698656797409058
+    },
+    {
+      "vertex": 9302,
+      "joint": "mixamorig:RightHandPinky4",
+      "weight": 0.2328801304101944
+    },
+    {
+      "vertex": 9303,
+      "joint": "mixamorig:RightHandPinky4",
+      "weight": 0.2328801304101944
+    },
+    {
+      "vertex": 9304,
+      "joint": "mixamorig:RightHandPinky4",
+      "weight": 0.2328801304101944
+    },
+    {
+      "vertex": 9306,
+      "joint": "mixamorig:RightHandPinky4",
+      "weight": 0.23287981748580933
+    },
+    {
+      "vertex": 9307,
+      "joint": "mixamorig:RightHandPinky4",
+      "weight": 0.23287981748580933
+    },
+    {
+      "vertex": 9311,
+      "joint": "mixamorig:RightHandPinky4",
+      "weight": 0.20658308267593384
+    },
+    {
+      "vertex": 9312,
+      "joint": "mixamorig:RightHandPinky4",
+      "weight": 0.20658308267593384
+    },
+    {
+      "vertex": 9140,
+      "joint": "mixamorig:LeftHandPinky4",
+      "weight": 0.17427323758602142
+    }
+  ],
+  "allowedByteRanges": [
+    [5790228, 5836292],
+    [5836292, 6020548]
+  ],
+  "unchangedBytesSha256": "335958ab0098fa5ed54692aab4899b590d42a40742b75197d4d35ef4d9147cc3",
+  "before": {
+    "poseCount": 324,
+    "maximumEdgeGrowthMeters": 1.0010344768127157,
+    "maximumEdgeRatio": 120.1566469359054,
+    "edgesGrowingOver8cmAcrossPoses": 4698,
+    "worstPose": {
+      "side": "Left",
+      "group": "Pinky",
+      "axis": "x",
+      "angle": -70
+    }
+  },
+  "after": {
+    "poseCount": 324,
+    "maximumEdgeGrowthMeters": 0.043072247808442696,
+    "maximumEdgeRatio": 5.464011320584797,
+    "edgesGrowingOver8cmAcrossPoses": 0,
+    "worstPose": {
+      "side": "Right",
+      "group": "Thumb",
+      "axis": "z",
+      "angle": 70
+    }
+  }
+}

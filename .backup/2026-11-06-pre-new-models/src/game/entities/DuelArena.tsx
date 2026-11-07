@@ -1,0 +1,23 @@
+import { useEffect,useRef } from 'react';import { useFrame } from '@react-three/fiber';import { useTexture } from '@react-three/drei';import { RigidBody,CapsuleCollider,BallCollider } from '@react-three/rapier';import { Mesh,Group,SRGBColorSpace } from 'three';
+import { config,level } from '../data/gameConfig';import { useGameStore } from '../state/gameStore';import { useInputStore } from '../state/inputStore';import { useHarnessStore } from '../state/harnessStore';import { extendTestSeam } from '../harness/exposeTestSeam';import { Character } from './Character';import { duel,bodies,tickDuel,resetDuel } from './Duel';
+const spawns=level.spawns.map(p=>[p.x,p.y,p.z] as [number,number,number]);
+const ballSpawn:[number,number,number]=[level.spawns[0].x,config.ball.holdHeight,level.spawns[0].z];
+const locked:[boolean,boolean,boolean]=[false,false,false];
+const capsuleArgs:[number,number]=[config.physics.halfHeight,config.physics.radius];
+const ballArgs:[number]=[config.ball.radius];
+export function DuelArena(){const legends=useGameStore(s=>s.legends);const ballState=useGameStore(s=>s.ballState);const rings=useRef<Group>(null),burst=useRef<Mesh>(null);const texture=useTexture('textures/basketball.png');texture.colorSpace=SRGBColorSpace;
+ useEffect(()=>{const wait=(frames=1)=>new Promise<void>(r=>setTimeout(r,frames*1000/config.physics.timestep));extendTestSeam({
+ getState:()=>({...useGameStore.getState(),input:useInputStore.getState(),player:{...duel.players[0],y:bodies.players[0]?.translation().y},opponent:{...duel.players[1],y:bodies.players[1]?.translation().y},ball:{...duel.ball,state:duel.ballState,owner:duel.owner},bumps:duel.bumps,shots:duel.shots,dunks:duel.dunks,smashes:duel.smashes,flops:duel.flops,fumbles:duel.fumbles,pickups:duel.pickups,interceptions:duel.interceptions,rim:duel.rim,time:duel.time}),
+ getEntities:()=>[{id:'player',type:'player',position:bodies.players[0]?.translation()},{id:'opponent',type:'opponent',position:bodies.players[1]?.translation()},{id:'ball',type:duel.ballState,position:bodies.ball?.translation()},{id:'hoop',type:'static',position:level.hoop},{id:'court',type:'static',active:true}],
+ press:async(action,frames=1)=>{const key=action==='Q'||action==='post'||action==='actionB'?'actionB':'actionA';useInputStore.getState().setAction(key,true);await wait(frames);useInputStore.getState().setAction(key,false);await wait(2);},step:wait,
+ reset:async(seed=42,scenario)=>{useHarnessStore.getState().setSeed(seed);useGameStore.getState().reset();resetDuel(seed,scenario);await wait(2);},
+ teleport:(id,pos)=>{const i=id==='player'?0:id==='opponent'?1:-1;const b=i>=0?bodies.players[i]:id==='ball'?bodies.ball:null;b?.setTranslation({x:pos[0],y:pos[1],z:pos[2]},true);b?.setLinvel({x:0,y:0,z:0},true);if(id==='ball'){duel.ballState='loose';duel.owner=-1;duel.looseTimer=config.ball.pickupDelay;b?.setGravityScale(1,true);}},
+ });return()=>{bodies.players=[null,null];bodies.ball=null;};},[]);
+ useFrame((_,dt)=>{tickDuel(dt);if(rings.current){duel.players.forEach((p,i)=>{const m=rings.current!.children[i];m.position.set(p.x,0.024,p.z);});}if(burst.current){const t=(duel.time-duel.event.t)/config.effects.impactDuration;burst.current.visible=t>=0&&t<1;burst.current.position.set(duel.event.x,0.07,duel.event.z);burst.current.scale.setScalar(0.6+t*2);}});
+ return <><RigidBody type="dynamic" ref={b=>{bodies.players[0]=b;}} position={spawns[0]} colliders={false} enabledRotations={locked} linearDamping={config.physics.damping} canSleep={false}><CapsuleCollider args={capsuleArgs} mass={config.player[legends[0]].mass} friction={0}/><Character index={0} legend={legends[0]}/></RigidBody>
+ <RigidBody type="dynamic" ref={b=>{bodies.players[1]=b;}} position={spawns[1]} colliders={false} enabledRotations={locked} linearDamping={config.physics.damping} canSleep={false}><CapsuleCollider args={capsuleArgs} mass={config.player[legends[1]].mass} friction={0}/><Character index={1} legend={legends[1]}/></RigidBody>
+ <RigidBody ref={b=>{bodies.ball=b;}} colliders={false} position={ballSpawn} ccd restitution={config.physics.ballRestitution} friction={0.4}><BallCollider args={ballArgs} sensor={ballState!=='loose'&&ballState!=='scored'}/><mesh><sphereGeometry args={[config.ball.radius,20,12]}/><meshStandardMaterial map={texture} color="#ffb171" roughness={0.78}/></mesh></RigidBody>
+ <group ref={rings}>{['#f1a355','#689ab9'].map((color,i)=><mesh key={i} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.68,0.73,32]}/><meshBasicMaterial color={color} transparent opacity={0.85} depthWrite={false}/></mesh>)}</group>
+ <mesh ref={burst} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[0.4,0.44,24]}/><meshBasicMaterial color="#ffd697" transparent opacity={0.8} depthWrite={false}/></mesh>
+ </>;
+}

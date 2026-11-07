@@ -1,0 +1,72 @@
+import type { CSSProperties } from 'react';
+
+/** Face-button size: small, PS5-pad-like, scaled to the short side of a landscape phone. */
+const FACE_BTN = 'min(10cqw, 54px, 14cqh)';
+
+export const styles: Record<string, CSSProperties> = {
+  overlay: {
+    position: 'absolute',
+    inset: 0,
+    pointerEvents: 'none',
+    userSelect: 'none',
+    touchAction: 'none',
+    zIndex: 5,
+  },
+  joyBase: {
+    position: 'absolute',
+    width: 'min(27cqw, 132px, 30cqh)',
+    height: 'min(27cqw, 132px, 30cqh)',
+    borderRadius: '50%',
+    background: 'rgba(255, 255, 255, 0.08)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    backdropFilter: 'blur(2px)',
+    pointerEvents: 'auto',
+    touchAction: 'none',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  joyKnob: {
+    position: 'absolute',
+    left: '35%',
+    top: '35%',
+    width: '30%',
+    height: '30%',
+    borderRadius: '50%',
+    background: 'rgba(255, 255, 255, 0.5)',
+    border: '1px solid rgba(255, 255, 255, 0.9)',
+    boxShadow: '0 6px 12px rgba(0, 0, 0, 0.35)',
+  },
+  // diamond footprint: 3 button-widths square, small buttons like a PS5 pad
+  faceCluster: {
+    position: 'absolute',
+    right: '4cqw',
+    width: `calc(${FACE_BTN} * 2.75)`,
+    height: `calc(${FACE_BTN} * 2.75)`,
+    pointerEvents: 'none',
+  },
+  btn: {
+    position: 'absolute',
+    width: FACE_BTN,
+    height: FACE_BTN,
+    minHeight: 0,
+    padding: 0,
+    borderRadius: '50%',
+    background: 'rgba(255, 255, 255, 0.1)',
+    border: '1px solid rgba(255, 255, 255, 0.25)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'system-ui, sans-serif',
+    fontSize: `calc(${FACE_BTN} * 0.42)`,
+    lineHeight: 1,
+    color: '#fff',
+    boxShadow: '0 4px 10px rgba(0, 0, 0, 0.35)',
+    pointerEvents: 'auto',
+    touchAction: 'none',
+    WebkitTapHighlightColor: 'transparent',
+  },
+  top: { left: '50%', top: 0, transform: 'translateX(-50%)' },
+  bottom: { left: '50%', bottom: 0, transform: 'translateX(-50%)' },
+  left: { left: 0, top: '50%', transform: 'translateY(-50%)' },
+  right: { right: 0, top: '50%', transform: 'translateY(-50%)' },
+  disabled: { opacity: 0.32, pointerEvents: 'none', boxShadow: 'none' },
+};

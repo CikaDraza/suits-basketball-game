@@ -1,0 +1,49 @@
+{
+  "name": "suits-basketball-game",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json",
+    "lint": "eslint src tests *.config.*",
+    "format": "prettier --write src tests *.config.* package.json tsconfig*.json README.md docs",
+    "format:check": "prettier --check src tests *.config.* package.json tsconfig*.json README.md docs",
+    "test": "node --import tsx --test --test-isolation=none tests/*.test.ts",
+    "test:browser": "playwright test",
+    "check": "npm run typecheck && npm run lint && npm test && npm run format:check"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  },
+  "dependencies": {
+    "@react-three/drei": "10.7.7",
+    "@react-three/fiber": "9.6.1",
+    "@react-three/rapier": "2.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "0.184.0",
+    "zustand": "5.0.13"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,313 @@
+{
+  "triangles": 14492,
+  "bounds_min": [
+    -1.151327506214428,
+    1.7801702429380867e-13,
+    -0.25820816517358214
+  ],
+  "bounds_max": [
+    1.1513275062143926,
+    2.16,
+    0.25820816517357476
+  ],
+  "dimensions_m": [
+    2.3026550124288203,
+    2.159999999999822,
+    0.516416330347157
+  ],
+  "height_m": 2.159999999999822,
+  "primitives": [
+    {
+      "node": "shaq_EyeLeft",
+      "vertices": 135,
+      "triangles": 45,
+      "has_uv": true,
+      "skinned": true,
+      "joints": 65,
+      "unweighted_vertices": 0,
+      "weight_sum_min": 1.0,
+      "weight_sum_max": 1.0
+    },
+    {
+      "node": "shaq_EyeRight",
+      "vertices": 141,
+      "triangles": 47,
+      "has_uv": true,
+      "skinned": true,
+      "joints": 65,
+      "unweighted_vertices": 0,
+      "weight_sum_min": 1.0,
+      "weight_sum_max": 1.0
+    },
+    {
+      "node": "shaq_HeadSkin",
+      "vertices": 12749,
+      "triangles": 4461,
+      "has_uv": true,
+      "skinned": true,
+      "joints": 65,
+      "unweighted_vertices": 0,
+      "weight_sum_min": 0.9999999701976776,
+      "weight_sum_max": 1.0000000298023224
+    },
+    {
+      "node": "shaq_LowerTeeth",
+      "vertices": 192,
+      "triangles": 96,
+      "has_uv": false,
+      "skinned": true,
+      "joints": 65,
+      "unweighted_vertices": 0,
+      "weight_sum_min": 1.0,
+      "weight_sum_max": 1.0
+    },
+    {
+      "node": "shaq_MouthCavity",
+      "vertices": 169,
+      "triangles": 312,
+      "has_uv": false,
+      "skinned": true,
+      "joints": 65,
+      "unweighted_vertices": 0,
+      "weight_sum_min": 1.0,
+      "weight_sum_max": 1.0
+    },
+    {
+      "node": "shaq_Tongue",
+      "vertices": 192,
+      "triangles": 96,
+      "has_uv": false,
+      "skinned": true,
+      "joints": 65,
+      "unweighted_vertices": 0,
+      "weight_sum_min": 1.0,
+      "weight_sum_max": 1.0
+    },
+    {
+      "node": "shaq_UpperTeeth",
+      "vertices": 192,
+      "triangles": 96,
+      "has_uv": false,
+      "skinned": true,
+      "joints": 65,
+      "unweighted_vertices": 0,
+      "weight_sum_min": 1.0,
+      "weight_sum_max": 1.0
+    },
+    {
+      "node": "Shaquille_ONeal_Mesh",
+      "vertices": 11516,
+      "triangles": 9339,
+      "has_uv": true,
+      "skinned": true,
+      "joints": 65,
+      "unweighted_vertices": 0,
+      "weight_sum_min": 0.9999998875427991,
+      "weight_sum_max": 1.000000087544322
+    }
+  ],
+  "textures": [
+    {
+      "name": "NormalGL_257f4a93-e102-4435-bab2-5d5a455b6364",
+      "size": [
+        2048,
+        2048
+      ],
+      "format": "PNG"
+    },
+    {
+      "name": "Color_257f4a93-e102-4435-bab2-5d5a455b6364",
+      "size": [
+        2048,
+        2048
+      ],
+      "format": "JPEG"
+    },
+    {
+      "name": "ORM_257f4a93-e102-4435-bab2-5d5a455b6364",
+      "size": [
+        2048,
+        2048
+      ],
+      "format": "PNG"
+    },
+    {
+      "name": "shaq_normal_2k",
+      "size": [
+        2048,
+        2048
+      ],
+      "format": "PNG"
+    },
+    {
+      "name": "shaq_original_body_basecolor",
+      "size": [
+        2048,
+        2048
+      ],
+      "format": "PNG"
+    },
+    {
+      "name": "shaq_rm_2k",
+      "size": [
+        2048,
+        2048
+      ],
+      "format": "PNG"
+    }
+  ],
+  "skin_count": 1,
+  "joints": [
+    [
+      "mixamorig:Hips",
+      "mixamorig:Spine",
+      "mixamorig:Spine1",
+      "mixamorig:Spine2",
+      "mixamorig:Neck",
+      "mixamorig:Head",
+      "mixamorig:HeadTop_End",
+      "mixamorig:RightShoulder",
+      "mixamorig:RightArm",
+      "mixamorig:RightForeArm",
+      "mixamorig:RightHand",
+      "mixamorig:RightHandThumb1",
+      "mixamorig:RightHandThumb2",
+      "mixamorig:RightHandThumb3",
+      "mixamorig:RightHandThumb4",
+      "mixamorig:RightHandIndex1",
+      "mixamorig:RightHandIndex2",
+      "mixamorig:RightHandIndex3",
+      "mixamorig:RightHandIndex4",
+      "mixamorig:RightHandMiddle1",
+      "mixamorig:RightHandMiddle2",
+      "mixamorig:RightHandMiddle3",
+      "mixamorig:RightHandMiddle4",
+      "mixamorig:RightHandRing1",
+      "mixamorig:RightHandRing2",
+      "mixamorig:RightHandRing3",
+      "mixamorig:RightHandRing4",
+      "mixamorig:RightHandPinky1",
+      "mixamorig:RightHandPinky2",
+      "mixamorig:RightHandPinky3",
+      "mixamorig:RightHandPinky4",
+      "mixamorig:LeftShoulder",
+      "mixamorig:LeftArm",
+      "mixamorig:LeftForeArm",
+      "mixamorig:LeftHand",
+      "mixamorig:LeftHandThumb1",
+      "mixamorig:LeftHandThumb2",
+      "mixamorig:LeftHandThumb3",
+      "mixamorig:LeftHandThumb4",
+      "mixamorig:LeftHandIndex1",
+      "mixamorig:LeftHandIndex2",
+      "mixamorig:LeftHandIndex3",
+      "mixamorig:LeftHandIndex4",
+      "mixamorig:LeftHandMiddle1",
+      "mixamorig:LeftHandMiddle2",
+      "mixamorig:LeftHandMiddle3",
+      "mixamorig:LeftHandMiddle4",
+      "mixamorig:LeftHandRing1",
+      "mixamorig:LeftHandRing2",
+      "mixamorig:LeftHandRing3",
+      "mixamorig:LeftHandRing4",
+      "mixamorig:LeftHandPinky1",
+      "mixamorig:LeftHandPinky2",
+      "mixamorig:LeftHandPinky3",
+      "mixamorig:LeftHandPinky4",
+      "mixamorig:RightUpLeg",
+      "mixamorig:RightLeg",
+      "mixamorig:RightFoot",
+      "mixamorig:RightToeBase",
+      "mixamorig:RightToe_End",
+      "mixamorig:LeftUpLeg",
+      "mixamorig:LeftLeg",
+      "mixamorig:LeftFoot",
+      "mixamorig:LeftToeBase",
+      "mixamorig:LeftToe_End"
+    ]
+  ],
+  "animation_names": [
+    "FaceDemo"
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "extensions": {
+        "KHR_materials_specular": {
+          "specularFactor": 0.5
+        }
+      },
+      "name": "tripo_material_257f4a93-e102-4435-bab2-5d5a455b6364",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicFactor": 0,
+        "metallicRoughnessTexture": {
+          "index": 2
+        }
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "Dental enamel",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.6399999856948853,
+          0.6100000143051147,
+          0.5299999713897705,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.47999998927116394
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "Modeled mouth interior",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.006000000052154064,
+          0.0017999999690800905,
+          0.001500000013038516,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.9800000190734863
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "Tongue",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.18000000715255737,
+          0.04500000178813934,
+          0.03500000014901161,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.8999999761581421
+      }
+    },
+    {
+      "name": "tripo_mat_997c1fad-db24-4eca-b7a5-4bafcb7065c2",
+      "normalTexture": {
+        "index": 3
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 4
+        },
+        "metallicFactor": 0,
+        "metallicRoughnessTexture": {
+          "index": 5
+        }
+      }
+    }
+  ],
+  "extensions_required": []
+}

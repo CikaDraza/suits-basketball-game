@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basketball Court — Half-court + Modular Hoop</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+    "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js",
+    "three/addons/exporters/OBJExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js",
+    "three/addons/exporters/GLTFExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js"
+  },
+  "integrity": {
+    "https://unpkg.com/three@0.184.0/build/three.module.js": "sha384-8FCZ1eVO6it4+pbec2aDtnTrwjWXZLJRC+MAGCIPDgsYnUrl/E0A2YlF8ioMKI/J",
+    "https://unpkg.com/three@0.184.0/build/three.core.js": "sha384-dw2ooPewaEIrAgl6oFDBmmBWCE9oW9LxRGcfwZ0hLvEprzo202wXl7vCYHRlSnOT",
+    "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js": "sha384-4rziNxOBZKQ69i+w+f89KJ55TCYquwchVbByQwmaOeIOXdOU2PLDn3kOfXHwIJC9",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js": "sha384-nbwtoZENJD3Vq+ACK0CuGQdPMuDWHkamC2KJD70EV5nfg6jQjfppKOea07YJN+N3",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js": "sha384-VofkvpG6HERhFCYbsUOHeNXBCqID2nfqkQqnVzE1jc/oPcz+qJ13ADdXH08hE+cQ"
+  }
+}
+</script>
+<style>
+  html, body { margin: 0; background: #000; color: #e8e6e1; }
+  a { color: #e8e6e1; } a:hover { color: #fff; }
+  three-d-stage:not(:defined) { visibility: hidden; }
+  .demo { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; align-items: center;
+    font: 500 12px/1 ui-monospace, "SF Mono", Menlo, monospace; z-index: 2; }
+  .demo span { opacity: .55; margin-right: 4px; letter-spacing: .04em; }
+  .demo button { appearance: none; font: inherit; color: #f1efe9; background: rgba(28,26,24,.82);
+    border: 1px solid rgba(255,255,255,.16); border-radius: 6px; padding: 9px 12px; cursor: pointer; }
+  .demo button:hover { background: rgba(48,44,40,.92); }
+</style>
+</head>
+<body>
+<three-d-stage name="basketball_halfcourt" background="#000" lighting="none" shadows="off"></three-d-stage>
+<div class="demo"><span>PHYSICS PREVIEW</span>
+  <button data-shot="swish">Swish</button>
+  <button data-shot="rim">Rim shot</button>
+  <button data-shot="side">Side rim</button>
+  <button data-shot="dunk">Dunk</button>
+</div>
+<script src="three-d-stage.js"></script>
+<script type="module">
+const stage = document.querySelector('three-d-stage');
+const { THREE } = await stage.ready;
+const V3 = THREE.Vector3;
+const scene = stage.scene;
+scene.background = new THREE.Color(0x000000);
+scene.fog = new THREE.Fog(0x000000, 30, 56);
+stage.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+stage.renderer.toneMappingExposure = 1.05;
+
+// ---------- court constants (FIBA, meters). x: baseline(0) → half-court(14). z: across. ----------
+const C = { L: 14, HW: 7.5, LINE: 0.05, KEY_HW: 2.45, KEY_D: 5.8, FT_R: 1.8, BASKET_X: 1.575,
+  THREE_R: 6.75, THREE_CORNER_Z: 6.6, RA_R: 1.25, BOARD_X: 1.2, RIM_Y: 3.05, RIM_R: 0.234 };
+
+// ---------- wood texture ----------
+function woodTexture() {
+  const S = 2048, cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const g = cv.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = '#6a4c30'; g.fillRect(0, 0, S, S);
+  const colW = 32;
+  for (let cx = 0; cx < S; cx += colW) {
+    let y = -rnd() * 400;
+    while (y < S) {
+      const len = 220 + rnd() * 380;
+      const h = 26 + rnd() * 8, s = 38 + rnd() * 14, l = 30 + rnd() * 13;
+      g.fillStyle = `hsl(${h} ${s}% ${l}%)`;
+      g.fillRect(cx, y, colW, len);
+      for (let k = 0; k < 7; k++) {
+        g.strokeStyle = `rgba(${rnd() < .5 ? '40,24,12' : '190,150,110'},${0.05 + rnd() * 0.08})`;
+        g.lineWidth = 1 + rnd() * 1.5;
+        const gx = cx + 3 + rnd() * (colW - 6);
+        g.beginPath(); g.moveTo(gx, y); g.bezierCurveTo(gx + rnd() * 4 - 2, y + len * .33, gx + rnd() * 4 - 2, y + len * .66, gx + rnd() * 3 - 1.5, y + len); g.stroke();
+      }
+      g.fillStyle = 'rgba(25,14,6,.55)'; g.fillRect(cx, y + len - 1, colW, 1.5);
+      y += len;
+    }
+    g.fillStyle = 'rgba(25,14,6,.5)'; g.fillRect(cx, 0, 1.2, S);
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = stage.renderer.capabilities.getMaxAnisotropy(); t.name = 'maple_planks';
+  return t;
+}
+function shadowTexture() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const g = cv.getContext('2d'), gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  gr.addColorStop(0, 'rgba(0,0,0,.72)'); gr.addColorStop(.45, 'rgba(0,0,0,.42)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+  const t = new THREE.CanvasTexture(cv); t.name = 'shadow_blob'; return t;
+}
+
+// ---------- materials (shared, named) ----------
+const M = {
+  wood:  new THREE.MeshStandardMaterial({ name: 'wood_maple', map: woodTexture(), roughness: 0.62, metalness: 0 }),
+  paint: new THREE.MeshStandardMaterial({ name: 'line_paint', color: 0xf3f1ec, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+  pad:   new THREE.MeshStandardMaterial({ name: 'pad_red', color: 0xb0150e, roughness: 0.88, metalness: 0, flatShading: true }),
+  steel: new THREE.MeshStandardMaterial({ name: 'steel_grey', color: 0xc9ccd0, roughness: 0.6, metalness: 0 }),
+  glass: new THREE.MeshStandardMaterial({ name: 'glass', color: 0xc4dce4, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.16, depthWrite: false }),
+  rim:   new THREE.MeshStandardMaterial({ name: 'rim_orange', color: 0xd9431c, roughness: 0.5, metalness: 0 }),
+  net:   new THREE.LineBasicMaterial({ name: 'net_cord', color: 0xf2f2ee }),
+  ball:  new THREE.MeshStandardMaterial({ name: 'ball_leather', color: 0xc25a22, roughness: 0.85, metalness: 0 }),
+  shadow: new THREE.MeshBasicMaterial({ name: 'contact_shadow', map: shadowTexture(), transparent: true, depthWrite: false }),
+};
+M.wood.map.repeat.set(60 / 8, 60 / 8);
+
+const mesh = (name, geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.name = name; m.position.set(x, y, z); return m; };
+const box = (name, w, h, d, mat, x, y, z) => mesh(name, new THREE.BoxGeometry(w, h, d), mat, x, y, z);
+
+// ---------- court lines: one merged strip mesh ----------
+function arc(cx, cz, r, a0, a1, n = 64) { const p = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; p.push([cx + r * Math.cos(a), cz + r * Math.sin(a)]); } return p; }
+function courtLinePaths() {
+  const { L, HW, KEY_HW: K, KEY_D: D, FT_R, BASKET_X: B, THREE_R, THREE_CORNER_Z: TC, RA_R, BOARD_X } = C;
+  const P = [];
+  const add = (pts, w = C.LINE) => P.push({ pts, w });
+  add([[0, -HW], [0, HW]]); add([[0, HW], [L, HW]]); add([[0, -HW], [L, -HW]]); add([[L, -HW], [L, HW]]);
+  add(arc(L, 0, FT_R, Math.PI / 2, Math.PI * 1.5));
+  add([[0, -K], [D, -K], [D, K], [0, K]]);
+  add(arc(D, 0, FT_R, -Math.PI / 2, Math.PI / 2));
+  for (let i = 0; i < 9; i++) { const a0 = Math.PI / 2 + (i + .25) * Math.PI / 9; add(arc(D, 0, FT_R, a0, a0 + Math.PI / 18, 6)); }
+  const ta = Math.asin(TC / THREE_R), tx = B + Math.sqrt(THREE_R ** 2 - TC ** 2);
+  add([[0, TC], [tx, TC]]); add([[0, -TC], [tx, -TC]]); add(arc(B, 0, THREE_R, -ta, ta, 128));
+  add([[BOARD_X, RA_R], [B, RA_R]]); add([[BOARD_X, -RA_R], [B, -RA_R]]); add(arc(B, 0, RA_R, -Math.PI / 2, Math.PI / 2, 40));
+  for (const s of [1, -1]) {
+    add([[1.95, s * (K + 0.025)], [1.95, s * (K + 0.125)]], 0.3);
+    for (const x of [2.95, 3.8, 4.65]) add([[x, s * (K + 0.025)], [x, s * (K + 0.125)]], 0.05);
+  }
+  return P;
+}
+function stripGeometry(paths, y) {
+  const pos = [], idx = [];
+  for (const { pts, w } of paths) for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, z0] = pts[i], [x1, z1] = pts[i + 1];
+    let dx = x1 - x0, dz = z1 - z0; const l = Math.hypot(dx, dz); if (l < 1e-6) continue; dx /= l; dz /= l;
+    const e = Math.min(C.LINE / 2, l), h = w / 2, nx = -dz * h, nz = dx * h;
+    const ax = x0 - dx * e, az = z0 - dz * e, bx = x1 + dx * e, bz = z1 + dz * e, b = pos.length / 3;
+    pos.push(ax + nx, y, az + nz, ax - nx, y, az - nz, bx - nx, y, bz - nz, bx + nx, y, bz + nz);
+    idx.push(b, b + 2, b + 1, b, b + 3, b + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_, i) => i % 3 === 1 ? 1 : 0), 3));
+  g.setIndex(idx); return g;
+}
+
+// ---------- <Court /> ----------
+const court = new THREE.Group(); court.name = 'Court';
+const floor = mesh('floor', new THREE.PlaneGeometry(60, 60), M.wood, 7, 0, 0); floor.rotation.x = -Math.PI / 2;
+court.add(floor);
+court.add(mesh('court_lines', stripGeometry(courtLinePaths(), 0.002), M.paint));
+
+// ---------- <BasketballHoop /> (nested hinge hierarchy) ----------
+const BASE_X = -1.1, TILT1 = -0.35, ARM1 = 1.1;
+const hoop = new THREE.Group(); hoop.name = 'BasketballHoop'; hoop.position.set(BASE_X, 0, 0);
+// Segment A — static padded base
+const segA = new THREE.Group(); segA.name = 'SegmentA_Base'; hoop.add(segA);
+segA.add(box('base_plinth', 1.0, 0.18, 0.84, M.pad, 0, 0.09, 0));
+const towerGeo = new THREE.CylinderGeometry(0.3, 0.46, 1.5, 4, 1); towerGeo.rotateY(Math.PI / 4); towerGeo.scale(1, 1, 0.86);
+segA.add(mesh('base_tower_pad', towerGeo, M.pad, 0, 0.93, 0));
+segA.add(box('base_cap', 0.36, 0.04, 0.32, M.pad, 0, 1.70, 0));
+// Hinge 1 — lower breakaway arm
+const hinge1 = new THREE.Group(); hinge1.name = 'Hinge1_LowerArm'; hinge1.position.set(0, 1.72, 0); hinge1.rotation.z = TILT1; segA.add(hinge1);
+hinge1.add(mesh('hinge1_knuckle', new THREE.CylinderGeometry(0.075, 0.075, 0.2, 24).rotateX(Math.PI / 2), M.steel));
+hinge1.add(box('lower_arm', 0.15, ARM1, 0.13, M.steel, 0, ARM1 / 2, 0));
+// Hinge 2 — upper extension arm
+const h2w = new V3(BASE_X - ARM1 * Math.sin(TILT1), 1.72 + ARM1 * Math.cos(TILT1), 0);
+const mountW = new V3(1.1, 3.3, 0), armV = mountW.clone().sub(h2w);
+const ARM2 = armV.length(), ARM2_ANG = Math.atan2(armV.y, armV.x), TILT2 = ARM2_ANG - TILT1;
+const hinge2 = new THREE.Group(); hinge2.name = 'Hinge2_UpperArm'; hinge2.position.set(0, ARM1, 0); hinge2.rotation.z = TILT2; hinge1.add(hinge2);
+hinge2.add(mesh('hinge2_knuckle', new THREE.CylinderGeometry(0.07, 0.07, 0.18, 24).rotateX(Math.PI / 2), M.steel));
+hinge2.add(box('upper_arm', ARM2, 0.13, 0.12, M.steel, ARM2 / 2, 0, 0));
+// Backboard — rigid at end of extension
+const board = new THREE.Group(); board.name = 'Backboard'; board.position.set(ARM2, 0, 0); board.rotation.z = -ARM2_ANG; hinge2.add(board);
+const FX = C.BOARD_X - mountW.x, BY = 2.9 - mountW.y, BCY = BY + 0.525;
+board.add(box('board_mount', FX - 0.01, 0.22, 0.3, M.steel, (FX - 0.01) / 2, 0, 0));
+board.add(box('glass', 0.012, 1.05, 1.8, M.glass, FX, BCY, 0));
+board.add(box('frame_top', 0.035, 0.045, 1.8, M.steel, FX - 0.012, BY + 1.05, 0));
+board.add(box('frame_bottom', 0.035, 0.045, 1.8, M.steel, FX - 0.012, BY, 0));
+for (const s of [1, -1]) board.add(box('frame_side_' + (s > 0 ? 'r' : 'l'), 0.035, 1.05, 0.045, M.steel, FX - 0.012, BCY, s * 0.9));
+const strut = (name, y1, z1, y2, z2) => { const l = Math.hypot(y2 - y1, z2 - z1); const m = box(name, 0.025, 0.03, l, M.steel, FX - 0.035, (y1 + y2) / 2, (z1 + z2) / 2); m.rotation.x = -Math.atan2(y2 - y1, z2 - z1); board.add(m); };
+strut('strut_diag_a', BY + 0.05, -0.85, BY + 1.0, 0.85);
+strut('strut_diag_b', BY + 0.05, 0.85, BY + 0.62, -0.05);
+strut('strut_mid', BY + 0.62, -0.85, BY + 0.62, 0.85);
+const TX = FX + 0.0075, TB = C.RIM_Y - mountW.y;
+board.add(box('target_top', 0.002, 0.05, 0.59, M.paint, TX, TB + 0.425, 0));
+board.add(box('target_bottom', 0.002, 0.05, 0.59, M.paint, TX, TB + 0.025, 0));
+for (const s of [1, -1]) board.add(box('target_side', 0.002, 0.45, 0.05, M.paint, TX, TB + 0.225, s * 0.27));
+board.add(box('pad_bottom', 0.07, 0.08, 1.86, M.pad, FX, BY - 0.02, 0));
+for (const s of [1, -1]) board.add(box('pad_corner', 0.07, 0.3, 0.08, M.pad, FX, BY + 0.13, s * 0.89));
+// Rim assembly — 3-way pivot
+const rimPivot = new THREE.Group(); rimPivot.name = 'RimPivot_3Axis'; rimPivot.position.set(FX + 0.006, TB, 0); board.add(rimPivot);
+rimPivot.add(box('rim_plate', 0.012, 0.14, 0.16, M.rim, 0.006, -0.03, 0));
+rimPivot.add(box('rim_bracket', 0.16, 0.022, 0.09, M.rim, 0.08, 0, 0));
+const RIM_CX = C.BASKET_X - (C.BOARD_X + 0.006);
+const rimCenter = new THREE.Group(); rimCenter.name = 'RimCenter'; rimCenter.position.set(RIM_CX, 0, 0); rimPivot.add(rimCenter);
+const ring = mesh('rim_ring', new THREE.TorusGeometry(C.RIM_R, 0.009, 12, 64), M.rim); ring.rotation.x = Math.PI / 2; rimCenter.add(ring);
+for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; const h = mesh('net_hook', new THREE.BoxGeometry(0.012, 0.025, 0.006), M.rim, Math.cos(a) * C.RIM_R, -0.014, Math.sin(a) * C.RIM_R); h.rotation.y = -a; rimCenter.add(h); }
+court.add(hoop);
+
+// fake contact shadow (no shadow maps)
+const sh = mesh('hoop_shadow', new THREE.PlaneGeometry(1, 1), M.shadow, 1.4, 0.004, 0.35); sh.rotation.set(-Math.PI / 2, 0, -0.12); sh.scale.set(5.6, 1.5, 1); court.add(sh);
+const sh2 = mesh('base_shadow', new THREE.PlaneGeometry(1, 1), M.shadow, BASE_X + 0.1, 0.005, 0.05); sh2.rotation.x = -Math.PI / 2; sh2.scale.set(1.6, 1.3, 1); court.add(sh2);
+
+// ---------- net (verlet chain-link) ----------
+const NS = 12, NR = 6, ringR = [0.228, 0.207, 0.184, 0.166, 0.154, 0.148], ringY = [0, -0.085, -0.175, -0.265, -0.355, -0.44];
+const rest = [], links = [];
+for (let r = 0; r < NR; r++) for (let i = 0; i < NS; i++) { const a = (i + (r % 2) * 0.5) / NS * Math.PI * 2; rest.push(new V3(Math.cos(a) * ringR[r], ringY[r], Math.sin(a) * ringR[r])); }
+const id = (r, i) => r * NS + ((i % NS) + NS) % NS;
+for (let r = 0; r < NR - 1; r++) for (let i = 0; i < NS; i++) { links.push([id(r, i), id(r + 1, i)]); links.push([id(r, i), id(r + 1, r % 2 ? i + 1 : i - 1)]); }
+for (let i = 0; i < NS; i++) links.push([id(NR - 1, i), id(NR - 1, i + 1)]);
+const restLen = links.map(([a, b]) => rest[a].distanceTo(rest[b]));
+const P = rest.map(() => new V3()), Pp = rest.map(() => new V3()), tmp = new V3();
+const netGeo = new THREE.BufferGeometry(); netGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(links.length * 6), 3));
+const net = new THREE.LineSegments(netGeo, M.net); net.name = 'net'; net.frustumCulled = false; court.add(net);
+function syncNetGeo() { const a = netGeo.attributes.position.array; links.forEach(([i, j], k) => { P[i].toArray(a, k * 6); P[j].toArray(a, k * 6 + 3); }); netGeo.attributes.position.needsUpdate = true; }
+
+stage.setObject(court);
+// Static isometric rig: full half-court in frame, hoop on the left third.
+const CAM = { position: [24.5, 12.34, 7.48], target: [9.5, 0, -0.5], fov: 40, refAspect: 1.6 };
+stage.setView(CAM);
+let lastAspect = 0;
+stage.onFrame(() => { const cam = stage.camera; if (cam.aspect === lastAspect) return; lastAspect = cam.aspect;
+  const t = Math.tan(CAM.fov * Math.PI / 360) * Math.max(1, CAM.refAspect / cam.aspect);
+  cam.fov = 2 * Math.atan(t) * 180 / Math.PI; cam.updateProjectionMatrix(); });
+
+// ---------- lighting: one sharp key pool + faint shaping ----------
+const spot = new THREE.SpotLight(0xfff1dc, 260, 0, 0.74, 0.6, 1.15); spot.name = 'key_spot';
+spot.position.set(-1.5, 16, -1.2); spot.target.position.set(5, 0, 0.5); scene.add(spot, spot.target);
+const dir = new THREE.DirectionalLight(0xffeedd, 1.6); dir.position.set(10, 9, 6); scene.add(dir);
+scene.add(new THREE.AmbientLight(0xffffff, 0.04));
+
+// ---------- springs ----------
+const spring = (k, c, min, max) => ({ a: 0, w: 0, k, c, min, max, ext: 0 });
+const S1 = spring(260, 24, -15 * Math.PI / 180, 0);
+const S2 = spring(90, 11, -45 * Math.PI / 180, 0);
+const RX = spring(150, 10, -0.22, 0.22), RY = spring(150, 10, -0.22, 0.22), RZ = spring(170, 11, -0.55, 0.03);
+function stepSpring(s, dt) { s.w += (-s.k * s.a - s.c * s.w + s.ext) * dt; s.a += s.w * dt; if (s.a < s.min) { s.a = s.min; s.w = Math.max(0, s.w); } if (s.a > s.max) { s.a = s.max; s.w = Math.min(0, s.w); } }
+
+// ---------- ball ----------
+const BR = 0.12, ball = mesh('ball', new THREE.SphereGeometry(BR, 32, 20), M.ball); ball.visible = false; scene.add(ball);
+const bv = new V3(); let ballLive = false, dunkHold = 0;
+const rimW = new V3(), rimN = new V3(), pivW = new V3(), q = new THREE.Quaternion();
+function rimHit(dt) {
+  rimCenter.getWorldPosition(rimW); rimN.set(0, 1, 0).applyQuaternion(rimCenter.getWorldQuaternion(q));
+  const v = ball.position.clone().sub(rimW); const vp = v.clone().addScaledVector(rimN, -v.dot(rimN));
+  if (vp.lengthSq() < 1e-8) return; const Q = rimW.clone().addScaledVector(vp.normalize(), C.RIM_R);
+  const d = ball.position.clone().sub(Q), dist = d.length(), min = BR + 0.009;
+  if (dist >= min) return; const n = d.divideScalar(dist); ball.position.copy(Q).addScaledVector(n, min);
+  const vn = bv.dot(n); if (vn >= 0) return;
+  const J = n.clone().multiplyScalar(-(1 + 0.55) * vn * 0.6); bv.addScaledVector(n, -(1 + 0.55) * vn); bv.multiplyScalar(0.92);
+  rimPivot.getWorldPosition(pivW);
+  const tau = Q.clone().sub(pivW).cross(J.negate());
+  const inv = rimPivot.parent.getWorldQuaternion(q).invert(); tau.applyQuaternion(inv);
+  const I = 1.6; RX.w += tau.x / I; RY.w += tau.y / I; RZ.w += tau.z / I; S2.w += tau.z * 0.12; S1.w += tau.z * 0.03;
+}
+function stepBall(dt) {
+  if (!ballLive) return;
+  bv.y -= 9.81 * dt; ball.position.addScaledVector(bv, dt);
+  rimHit(dt);
+  if (ball.position.x - BR < C.BOARD_X + 0.006 && ball.position.x > C.BOARD_X - 0.05 && Math.abs(ball.position.z) < 0.9 && ball.position.y > 2.9 && ball.position.y < 3.95 && bv.x < 0) { ball.position.x = C.BOARD_X + 0.006 + BR; bv.x *= -0.6; }
+  if (ball.position.y < BR) { ball.position.y = BR; bv.y *= -0.62; bv.x *= 0.85; bv.z *= 0.85; if (Math.abs(bv.y) < 0.4) bv.y = 0; }
+  if (ball.position.y <= BR + 0.001 && bv.length() < 0.25) { ballLive = false; setTimeout(() => (ball.visible = ballLive), 600); }
+}
+
+// ---------- net sim ----------
+const G = new V3(0, -9.81, 0), Mw = new THREE.Matrix4();
+function netInit() { rimCenter.updateMatrixWorld(true); rest.forEach((r, k) => { P[k].copy(r).applyMatrix4(rimCenter.matrixWorld); Pp[k].copy(P[k]); }); }
+function stepNet(dt) {
+  rimCenter.updateMatrixWorld(true); Mw.copy(rimCenter.matrixWorld);
+  for (let k = 0; k < P.length; k++) {
+    tmp.copy(rest[k]).applyMatrix4(Mw);
+    if (k < NS) { P[k].copy(tmp); Pp[k].copy(tmp); continue; }
+    const vx = (P[k].x - Pp[k].x) * 0.982, vy = (P[k].y - Pp[k].y) * 0.982, vz = (P[k].z - Pp[k].z) * 0.982;
+    Pp[k].copy(P[k]); P[k].x += vx; P[k].y += vy + G.y * dt * dt; P[k].z += vz;
+    P[k].lerp(tmp, 0.035);
+    if (ball.visible) {
+      const d = P[k].clone().sub(ball.position), l = d.length(), m = BR + 0.012;
+      if (l < m && l > 1e-6) { P[k].copy(ball.position).addScaledVector(d, m / l); P[k].addScaledVector(bv, dt * 0.45); bv.multiplyScalar(0.9975); }
+    }
+  }
+  for (let it = 0; it < 6; it++) links.forEach(([a, b], i) => {
+    tmp.subVectors(P[b], P[a]); const l = tmp.length(); if (l < 1e-6) return; const f = (l - restLen[i]) / l;
+    if (a < NS) P[b].addScaledVector(tmp, -f); else { P[a].addScaledVector(tmp, f * 0.5); P[b].addScaledVector(tmp, -f * 0.5); }
+  });
+}
+netInit(); syncNetGeo();
+
+// ---------- frame loop (fixed 120 Hz substeps) ----------
+let acc = 0; const H = 1 / 120;
+stage.onFrame((dt) => {
+  acc += dt;
+  while (acc >= H) {
+    acc -= H;
+    if (dunkHold > 0) { dunkHold -= H; RZ.ext = -70; S2.ext = -22; S1.ext = -9; } else { RZ.ext = S2.ext = S1.ext = 0; }
+    [S1, S2, RX, RY, RZ].forEach((s) => stepSpring(s, H));
+    hinge1.rotation.z = TILT1 + S1.a; hinge2.rotation.z = TILT2 + S2.a; rimPivot.rotation.set(RX.a, RY.a, RZ.a);
+    stepBall(H); stepNet(H);
+  }
+  syncNetGeo();
+});
+
+// ---------- demo shots ----------
+function shoot(from, to, T) {
+  ball.position.copy(from); const d = to.clone().sub(from);
+  bv.set(d.x / T, (d.y + 0.5 * 9.81 * T * T) / T, d.z / T); ball.visible = ballLive = true;
+}
+const rc = () => rimCenter.getWorldPosition(new V3());
+const shots = {
+  swish: () => shoot(rc().add(new V3(3.2, 0.6, 1.4)), rc().add(new V3(0.0, -0.05, 0)), 0.95),
+  rim:   () => shoot(rc().add(new V3(3.4, 0.4, 0.3)), rc().add(new V3(0.2, 0.0, 0.03)), 0.9),
+  side:  () => shoot(rc().add(new V3(1.6, 0.6, 3.0)), rc().add(new V3(0.02, 0.0, 0.19)), 0.85),
+  dunk:  () => { shoot(rc().add(new V3(0.55, 0.55, 0.05)), rc().add(new V3(0.03, -0.25, 0)), 0.16); setTimeout(() => (dunkHold = 0.55), 90); },
+};
+document.querySelectorAll('[data-shot]').forEach((b) => b.addEventListener('click', () => shots[b.dataset.shot]()));
+</script>
+</body>
+</html>

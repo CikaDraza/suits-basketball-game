@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "format": "GLB / glTF 2.0",
+  "units": "meters",
+  "up_axis": "+Y",
+  "forward_axis": "+Z",
+  "neutral_pose": "T-pose",
+  "characters": [
+    {
+      "name": "Shaquille O’Neal",
+      "file": "models/shaquille_oneal.glb",
+      "height_m": 2.16,
+      "physics_mass_kg": 150,
+      "triangles": 14492,
+      "body_joints": 65,
+      "textures_px": [
+        2048,
+        2048
+      ],
+      "embedded_images": 6,
+      "facial_controls": [
+        "eyeBlinkLeft",
+        "eyeBlinkRight",
+        "jawOpen",
+        "eyeLookLeft",
+        "eyeLookRight",
+        "eyeLookUp",
+        "eyeLookDown"
+      ],
+      "animation": "FaceDemo",
+      "animation_seconds": 4,
+      "animation_scope": "Facial morphs only; no body transform tracks",
+      "sha256": "3d687fbc0d8b47716bd73e255086229a2f134cd118ee54e48a74e54d44e5ee27"
+    },
+    {
+      "name": "Charles Barkley",
+      "file": "models/charles_barkley.glb",
+      "height_m": 1.98,
+      "physics_mass_kg": 138,
+      "triangles": 14629,
+      "body_joints": 65,
+      "textures_px": [
+        2048,
+        2048
+      ],
+      "embedded_images": 6,
+      "facial_controls": [
+        "eyeBlinkLeft",
+        "eyeBlinkRight",
+        "jawOpen",
+        "eyeLookLeft",
+        "eyeLookRight",
+        "eyeLookUp",
+        "eyeLookDown"
+      ],
+      "animation": "FaceDemo",
+      "animation_seconds": 4,
+      "animation_scope": "Facial morphs only; no body transform tracks",
+      "sha256": "6136e174eac70efd7d82dfe913761c531d194c3956565941bfb39837207b7795"
+    }
+  ],
+  "height_ratio_shaq_to_charles": 1.090909090909091,
+  "credit_total": 365,
+  "new_head_round_credits": 160,
+  "likeness": "Stylized approximate likeness from supplied photos; actual volumetric Tripo H3.1 head meshes",
+  "facial_rig_scope": "Basic eyelids, gaze and jaw morph controls; no complete FACS or phoneme lip-sync rig",
+  "verification_scope": "Asset import, geometry, textures, weights, rig deformation, facial morphs and clip playback; target React/Rapier/ecctrl project not supplied."
+}

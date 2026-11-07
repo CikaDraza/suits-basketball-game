@@ -1,0 +1,44 @@
+{
+  "file": "charles_barkley.glb",
+  "bone_count": 65,
+  "rest_vs_default_maximum_error_m": 1.16791898400703e-06,
+  "deformation_checks": [
+    {
+      "bone": "LeftForeArm",
+      "moved_vertices": 2561,
+      "maximum_displacement_m": 0.1729780217744913
+    },
+    {
+      "bone": "RightForeArm",
+      "moved_vertices": 2159,
+      "maximum_displacement_m": 0.17577774479801797
+    },
+    {
+      "bone": "LeftLeg",
+      "moved_vertices": 990,
+      "maximum_displacement_m": 0.2254547662426525
+    },
+    {
+      "bone": "RightLeg",
+      "moved_vertices": 982,
+      "maximum_displacement_m": 0.22440179090131135
+    },
+    {
+      "bone": "LeftFoot",
+      "moved_vertices": 610,
+      "maximum_displacement_m": 0.1082912733704641
+    },
+    {
+      "bone": "RightFoot",
+      "moved_vertices": 596,
+      "maximum_displacement_m": 0.1071420378752129
+    },
+    {
+      "bone": "Head",
+      "moved_vertices": 10934,
+      "maximum_displacement_m": 0.04817500911584442
+    }
+  ],
+  "result": "passed",
+  "scope": "Asset import and individual joint deformation; no game project or locomotion clips supplied."
+}
