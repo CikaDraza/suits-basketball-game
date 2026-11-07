@@ -18,6 +18,7 @@ import { isSimulationRunning } from '../simulation/isSimulationRunning';
 import type { PlayerSlot } from '../simulation/types';
 import { Character } from './Character';
 import { InboundCountdown } from './InboundCountdown';
+import { FootContactDebug } from './FootContactDebug';
 import { duel, bodies, tickDuel } from './Duel';
 import { afterDuelPhysicsStep } from './Duel';
 import { PLAYER_COLLISION_GROUPS } from '../physics/ballCollision';
@@ -144,6 +145,7 @@ export function DuelArena() {
         ))}
       </group>
       <InboundCountdown />
+      <FootContactDebug />
       <mesh ref={burst} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[0.4, 0.44, 24]} />
         <meshBasicMaterial color="#ffd697" transparent opacity={0.8} depthWrite={false} />

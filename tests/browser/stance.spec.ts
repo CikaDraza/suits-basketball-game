@@ -1,6 +1,33 @@
 import { expect, test } from '@playwright/test';
 import type { CharacterPoseSnapshot } from '../../src/game/harness/characterPose';
+import type { LocomotionSnapshot } from '../../src/game/entities/locomotionDebug';
 import { bootGame } from './helpers';
+
+type Locomotion = LocomotionSnapshot;
+
+/**
+ * During a stance change a foot may take one settle step (a wider post stance is stepped
+ * into): no sole below the court, at least one foot on it, and a foot is only off the
+ * court while the gait reports it swinging.
+ */
+function expectGroundedOrStepping(pose: CharacterPoseSnapshot, gait: Locomotion | null): void {
+  expect(pose.capsuleBottomY).toBeGreaterThan(-0.01);
+  const soles = [pose.leftSoleY, pose.rightSoleY];
+  for (const sole of soles) expect(sole).toBeGreaterThan(-0.01);
+  expect(Math.min(...soles)).toBeLessThan(0.025);
+  soles.forEach((sole, i) => {
+    if (sole >= 0.025) expect(gait?.feet[i].planted, 'a planted foot is floating').toBe(false);
+  });
+}
+
+/** Wait until the gait has both feet planted (any settle step has landed). */
+async function settled(page: import('@playwright/test').Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__TEST__!.getLocomotion!(0)?.feet.every((f) => f.planted)),
+    )
+    .toBe(true);
+}
 
 function expectGrounded(pose: CharacterPoseSnapshot): void {
   // Rapier's normal resting contact slop is ~1.2 mm; 1 cm catches the old 16 cm error.
@@ -26,6 +53,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
       window.__TEST__!.setDebugFlag('colliders', true);
     }, legend);
     await page.waitForFunction(() => (window.__TEST__!.getState().time as number) > 0.5);
+    await settled(page);
     const idle = await page.evaluate(() => window.__TEST__!.getCharacterPose!(0));
     expect(idle).not.toBeNull();
     expectGrounded(idle!);
@@ -43,18 +71,18 @@ for (const legend of ['shaq', 'chuck'] as const) {
 
     // Sample the actual skinned shoes during the blend, not just bone origins in the final pose.
     const blend = await page.evaluate(async () => {
-      const samples: CharacterPoseSnapshot[] = [];
+      const samples: { pose: CharacterPoseSnapshot; gait: Locomotion | null }[] = [];
       const until = (window.__TEST__!.getState().time as number) + 0.6;
       while ((window.__TEST__!.getState().time as number) < until) {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         const pose = window.__TEST__!.getCharacterPose!(0);
-        if (pose) samples.push(pose);
+        if (pose) samples.push({ pose, gait: window.__TEST__!.getLocomotion!(0) });
       }
       return samples;
     });
     expect(blend.length).toBeGreaterThan(2);
-    for (const pose of blend) expectGrounded(pose);
-    const post = blend.at(-1)!;
+    for (const { pose, gait } of blend) expectGroundedOrStepping(pose, gait);
+    const post = blend.at(-1)!.pose;
     expect(post.bodyY).toBeCloseTo(idle!.bodyY, 3);
     expect(post.capsuleHalfHeight).toBe(idle!.capsuleHalfHeight);
     expect(post.capsuleRadius).toBe(idle!.capsuleRadius);
@@ -74,6 +102,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await expect
       .poll(() => page.evaluate(() => window.__TEST__!.getCharacterPose!(0)!.hipsWorldY))
       .toBeGreaterThan(idle!.hipsWorldY - 0.02);
+    await settled(page);
     expectGrounded((await page.evaluate(() => window.__TEST__!.getCharacterPose!(0)))!);
     expect(errors).toEqual([]);
   });

@@ -235,7 +235,13 @@ export function createInboundPassController(options: InboundPassOptions) {
       flight.outcome = 'missed';
       runtime.ballState = 'loose';
       runtime.looseTimer = config.ball.pickupDelay;
-      syncBallCollision(ball, runtime.ballState);
+      // a missed catch can leave the ball inside the receiver's capsule: start it clear
+      syncBallCollision(ball, runtime.ballState, {
+        players: bodies.players,
+        halfHeight: config.physics.halfHeight,
+        radius: config.physics.radius,
+        ballRadius: config.ball.radius,
+      });
       options.onMessage('Pass missed. Scramble for it!');
     }
     flight.previousBall = { ...current };

@@ -23,11 +23,14 @@ import { hoop } from '../court/hoopRig';
 import { createShadowTexture } from '../court/courtGeometry';
 import { createFaceController } from './faceController';
 import { createFootGrounding } from './footGrounding';
-import { contactArm, sampleFootstep } from './locomotion';
-import { createLimbIK } from './limbIK';
+import { contactArm } from './locomotion';
 import { createHandContactPose } from './handContactPose';
 import { protectedBallTarget, smoothUnit } from '../simulation/ballHandling';
 import { HandContactDebug } from './HandContactDebug';
+import { createLegRig } from './legRig';
+import { createGaitState, stepGait, type GaitTuning } from './gait';
+import { deriveStates, type CallForPassFallback } from './posture';
+import { locomotionDebug } from './locomotionDebug';
 
 Object.values(MODEL_PATHS).forEach((p) => useGLTF.preload(p));
 
@@ -101,8 +104,13 @@ function buildRig(root: Object3D): Rig {
 
 const _qa = new Quaternion(),
   _qr = new Quaternion(),
-  _e = new Euler();
-/** Rotate a bone by R, expressed in rest-pose model axes (+X = character's left, +Y up, +Z forward). */
+  _qy = new Quaternion(),
+  _e = new Euler(),
+  _up = new Vector3(0, 1, 0);
+/**
+ * Rotate a bone by R, expressed in rest-pose model axes (+X = character's left, +Y up,
+ * +Z forward). Every frame starts again from the bind pose, so nothing accumulates.
+ */
 function drive(
   rig: Rig,
   name: BoneName,
@@ -118,6 +126,7 @@ function drive(
   b.quaternion.copy(rig.restLocal[name]!).multiply(_qa);
 }
 
+/** Upper-body / leg FK parameters (radians), smoothed toward a target each frame. */
 type Pose = {
   lDown: number;
   lPitch: number;
@@ -128,6 +137,7 @@ type Pose = {
   /** horizontal adduction: swings the upper arm in across the chest (two-hand hold) */
   lIn: number;
   rIn: number;
+  /** leg FK: only used while airborne/fallen; grounded legs are solved by foot IK */
   lSwing: number;
   lKnee: number;
   rSwing: number;
@@ -137,8 +147,6 @@ type Pose = {
   twist: number;
   headYaw: number;
   headPitch: number;
-  crouch: number;
-  footPlant: number;
 };
 const REST: Pose = {
   lDown: 1.3,
@@ -158,9 +166,52 @@ const REST: Pose = {
   twist: 0,
   headYaw: 0,
   headPitch: 0,
-  crouch: 0.02,
-  footPlant: 0,
 };
+const DEG = Math.PI / 180;
+const G = config.animation.gait,
+  PO = config.animation.posture;
+const GAIT_TUNING: GaitTuning = {
+  startSpeed: G.startSpeed,
+  stopSpeed: G.stopSpeed,
+  sector: G.sectorDeg * DEG,
+  sectorMargin: G.sectorMarginDeg * DEG,
+  settleDistance: G.settleDistance,
+  settleYaw: G.settleYaw,
+  settleDuration: G.settleDuration,
+  settleLift: G.settleLift,
+  maxStanceOffset: 0.5,
+  minFootGap: G.minFootGap,
+  startDistance: G.startDistance,
+};
+
+/**
+ * Pelvis drop as a fraction of the rest hip height: ONE value per posture (max, not sum),
+ * plus walking knee flexion that grows with pace, bracing and the exhausted slump.
+ */
+function postureDrop(
+  st: {
+    wHold: number;
+    wDefensive: number;
+    wPost: number;
+    brace: number;
+    wExhausted: number;
+    moveWeight: number;
+  },
+  pace: number,
+): number {
+  return (
+    PO.uprightDrop +
+    Math.max(
+      (PO.holdDrop - PO.uprightDrop) * st.wHold,
+      (PO.defensiveDrop - PO.uprightDrop) * st.wDefensive,
+      (PO.postDrop - PO.uprightDrop) * st.wPost,
+      PO.movingDrop * st.moveWeight * pace,
+    ) +
+    PO.braceDrop * st.brace +
+    PO.exhaustedDrop * st.wExhausted
+  );
+}
+
 interface CharacterProps {
   readonly index: PlayerSlot;
   readonly legend: Legend;
@@ -169,7 +220,7 @@ interface CharacterProps {
 /** Rigged GLB characters. Each clone owns its skeleton; geometry/materials belong to the loader cache. */
 export function Character({ index, legend }: CharacterProps) {
   const gltf = useGLTF(MODEL_PATHS[legend]);
-  const { model, rig, face, skeletons, groundFeet, legs, hands } = useMemo(() => {
+  const { model, rig, face, skeletons, groundFeet, legRig, hands } = useMemo(() => {
     const model = cloneSkinned(gltf.scene);
     const skeletons = new Set<Skeleton>();
     model.traverse((object) => {
@@ -182,12 +233,8 @@ export function Character({ index, legend }: CharacterProps) {
       rig,
       face: createFaceController(model),
       skeletons,
-      legs: (['Left', 'Right'] as const).map((side) => {
-        const thigh = rig.bones[`${side}UpLeg`],
-          shin = rig.bones[`${side}Leg`],
-          foot = rig.bones[`${side}Foot`];
-        return thigh && shin && foot ? { foot, solve: createLimbIK(thigh, shin, foot) } : null;
-      }),
+      // measured in the detached bind pose, before any posing
+      legRig: createLegRig(model, rig.bones),
       hands: createHandContactPose(model, legend),
       groundFeet: createFootGrounding(
         model,
@@ -204,21 +251,29 @@ export function Character({ index, legend }: CharacterProps) {
       // SkeletonUtils shares the loader's geometry/materials but clones Skeleton objects.
       // Only release the clone's bone textures; cached GLB resources remain reusable.
       for (const skeleton of skeletons) skeleton.dispose();
+      locomotionDebug[index] = null;
     },
-    [skeletons],
+    [skeletons, index],
   );
 
   const state = useRef({
     pose: { ...REST },
-    phase: 0,
-    motionX: 0,
-    motionZ: 0,
-    motionTime: -1,
+    gait: createGaitState(),
+    groundReady: false,
+    lastGround: new Vector3(),
     revision: -1,
-    speed: 0,
-    gaitWeight: 0,
-    directionX: 0,
-    directionZ: 1,
+    moveWeight: 0,
+    wPost: 0,
+    wDefensive: 0,
+    wHold: 0,
+    wExhausted: 0,
+    brace: 0,
+    lastCut: -Infinity,
+    velX: 0,
+    velZ: 0,
+    netX: 0,
+    netZ: 0,
+    resets: 0,
     contactSide: 1 as -1 | 1,
     downS: 0,
     liftY: 0,
@@ -241,77 +296,208 @@ export function Character({ index, legend }: CharacterProps) {
   // The collider settles at halfHeight + radius; bodyY is only the initial spawn height.
   const bodyY = config.physics.halfHeight + config.physics.radius;
   const groundPoint = useMemo(() => new Vector3(), []);
-  const footTarget = useMemo(() => new Vector3(), []);
-  const forward = useMemo(() => new Vector3(), []);
   const ballPoint = useMemo(() => new Vector3(), []);
   const catchPoint = useMemo(() => new Vector3(), []);
   const incomingPoint = useMemo(() => new Vector3(), []);
+  const scratch = useMemo(
+    () => ({
+      neutral: [new Vector3(), new Vector3()] as [Vector3, Vector3],
+      hip: new Vector3(),
+      ankle: new Vector3(),
+      pole: new Vector3(),
+      footWorld: new Quaternion(),
+    }),
+    [],
+  );
 
   useFrame((_, rawDt) => {
     if (!isSimulationRunning()) return;
     const st = state.current;
+    // pose smoothing uses a clamped step; MOTION measurements use the real frame time
+    // (clamping it would double the measured speed and flag ordinary 5–10 fps frames as
+    // teleports, which would reset the planted feet)
     const dt = Math.min(rawDt, 0.05);
+    const frameDt = Math.min(rawDt, 0.25);
     const p = duel.players[index];
-    if (!p || !lift.current || !turn.current || !fall.current) return;
+    if (!p || !lift.current || !turn.current || !fall.current || !floor.current) return;
     const t = duel.time,
       s = config.shots;
-    const body = bodies.players[index]?.translation();
-    const x = body?.x ?? p.x,
-      z = body?.z ?? p.z;
-    const elapsed = t - st.motionTime;
-    const dx = x - st.motionX,
-      dz = z - st.motionZ;
-    const distance = Math.hypot(dx, dz);
-    const resetMotion =
-      st.motionTime < 0 ||
-      st.revision !== duel.revision ||
-      elapsed < 0 ||
-      distance > config.animation.teleportDistance;
-    const speed = resetMotion ? 0 : elapsed > 0 ? distance / elapsed : st.speed;
-    if (resetMotion) {
-      st.phase = 0;
-      st.speed = 0;
-      st.gaitWeight = 0;
-    }
-    const stride = p.mode === 'post' ? config.animation.postStride : config.animation.walkStride;
-    if (!resetMotion && distance > 1e-6 && speed > config.animation.motionDeadzone) {
-      st.phase += distance / (2 * stride);
-      st.directionX = dx / distance;
-      st.directionZ = dz / distance;
-    }
-    st.speed += (speed - st.speed) * dampingFactor(16, dt);
-    st.gaitWeight +=
-      ((speed > config.animation.motionDeadzone ? 1 : 0) - st.gaitWeight) * dampingFactor(18, dt);
-    st.motionX = x;
-    st.motionZ = z;
-    st.motionTime = t;
-    st.revision = duel.revision;
-    const mv = clamp(st.speed / config.player[legend].speed, 0, 1);
+    const body = bodies.players[index];
     const owner = duel.owner === index;
+    const opponent = duel.players[1 - index];
     const exhausted = p.energy < config.player.exhaustedThreshold;
     const rimDx = hoop.rimWorld.x - p.x,
       rimDz = hoop.rimWorld.z - p.z;
+    const fx = Math.sin(p.angle),
+      fz = Math.cos(p.angle);
+    const lx = fz,
+      lz = -fx; // character's left in world space
+
+    // ---------- 1. derived states (no second state machine) ----------
+    const awaitingPass =
+      (duel.ballState === 'inbound' || duel.ballState === 'pass') && duel.inboundOwner === index;
+    const receiving =
+      awaitingPass &&
+      duel.ballState === 'pass' &&
+      Math.hypot(duel.ball.x - p.x, duel.ball.z - p.z) < config.animation.catchReadyDistance;
+    const controlled = owner && duel.ballState === 'held' && p.mode !== 'down' && p.mode !== 'stun';
+    // Measured horizontal velocity = the body's actual displacement, smoothed. Rapier's
+    // linvel after the solver can still report the pushing intent when an opponent is
+    // shoved and clamped back each step (a blocked player would "walk in place").
+    const velocity = { x: st.velX, z: st.velZ };
+    const measuredSpeed = Math.hypot(velocity.x, velocity.z);
+    if (awaitingPass && measuredSpeed > config.animation.callForPass.cutSpeed) st.lastCut = t;
+    const opponentDistance = Math.hypot(opponent.x - p.x, opponent.z - p.z);
+    const states = deriveStates({
+      mode: p.mode,
+      controlled,
+      handling: p.handling,
+      receiving,
+      ballState: duel.ballState,
+      inboundOwner: duel.inboundOwner,
+      inboundStage: duel.inboundStage,
+      slot: index,
+      opponentHasBall: duel.owner === 1 - index && duel.ballState === 'held',
+      opponentDistance,
+      guardRange: config.defense.guardRange,
+      sinceRequest: t - p.passRequestAt,
+      sinceCut: t - st.lastCut,
+      callForPass: {
+        fallback: config.animation.callForPass.fallback as CallForPassFallback,
+        requestHold: config.animation.callForPass.requestHold,
+        cutHold: config.animation.callForPass.cutHold,
+      },
+    });
+    const blendK = dampingFactor(PO.blendRate, dt);
+    st.wPost += ((states.posture === 'post' ? 1 : 0) - st.wPost) * blendK;
+    st.wDefensive += ((states.posture === 'defensive' ? 1 : 0) - st.wDefensive) * blendK;
+    st.wHold += ((states.upper === 'hold' && p.charge === 0 ? 1 : 0) - st.wHold) * blendK;
+    st.wExhausted +=
+      ((exhausted && p.mode === 'idle' && !st.gait.moving ? 1 : 0) - st.wExhausted) * blendK;
+    // brace: pushing against a blocking opponent without actually travelling
+    // pushing: the player intends to move, is in contact, and achieves (net, jitter-free)
+    // well under a third of the intended speed — a blocked player braces, not walks
+    const netSpeed = Math.hypot(st.netX, st.netZ);
+    const pushing =
+      p.moving > config.player.minMove &&
+      netSpeed < p.moving * config.player[legend].speed * PO.braceSpeedRatio &&
+      opponentDistance < config.physics.radius * 2 + config.animation.contactReach;
+    st.brace += ((pushing ? 1 : 0) - st.brace) * dampingFactor(6, dt);
+
+    // ---------- 2. gait from the body's measured travel and (smoothed) velocity ----------
+    floor.current.getWorldPosition(groundPoint);
+    const grounded = p.mode !== 'dunk' && st.liftY < 0.001 && st.downS < 0.001;
+    const travelX = groundPoint.x - st.lastGround.x,
+      travelZ = groundPoint.z - st.lastGround.z;
+    const reset =
+      !st.groundReady ||
+      st.revision !== duel.revision ||
+      Math.hypot(travelX, travelZ) > config.animation.teleportDistance ||
+      // more travel in one frame than a step can cover (a long frame hitch): re-plant the
+      // feet under the body instead of dragging them through an unreachable IK target
+      Math.hypot(travelX, travelZ) > G.snapDistance ||
+      // faster than any player can move: a teleport/reset, not a step
+      Math.hypot(travelX, travelZ) >
+        config.animation.maxPlausibleSpeed * Math.max(frameDt, 1 / 60) ||
+      p.mode === 'spin';
+    if (reset && st.groundReady) st.resets++;
+    st.lastGround.copy(groundPoint);
+    st.revision = duel.revision;
+    const vk = reset ? 1 : dampingFactor(G.velocitySmoothing, frameDt);
+    st.velX += ((reset ? 0 : travelX / Math.max(frameDt, 1e-3)) - st.velX) * vk;
+    st.velZ += ((reset ? 0 : travelZ / Math.max(frameDt, 1e-3)) - st.velZ) * vk;
+    velocity.x = st.velX;
+    velocity.z = st.velZ;
+    const nk = reset ? 1 : dampingFactor(G.netSmoothing, frameDt);
+    st.netX += ((reset ? 0 : travelX / Math.max(frameDt, 1e-3)) - st.netX) * nk;
+    st.netZ += ((reset ? 0 : travelZ / Math.max(frameDt, 1e-3)) - st.netZ) * nk;
+    const gait = st.gait;
+    const spread =
+      PO.holdSpread * st.wHold +
+      Math.max(PO.defensiveSpread * st.wDefensive, PO.postSpread * st.wPost);
+    let stride = 0;
+    if (legRig && grounded) {
+      for (let i = 0; i < 2; i++) {
+        const leg = legRig.legs[i],
+          sign = i === 0 ? 1 : -1;
+        const x = leg.restFoot.x + sign * spread,
+          z = leg.restFoot.z;
+        scratch.neutral[i].set(
+          groundPoint.x + lx * x + fx * z,
+          groundPoint.y + leg.ankleHeight,
+          groundPoint.z + lz * x + fz * z,
+        );
+      }
+      // stride/lift blended by travel direction in the facing frame, then by posture
+      const sp = Math.max(gait.speed, 1e-6);
+      const fw = Math.max(0, gait.forwardSpeed) ** 2 / sp ** 2,
+        bw = Math.max(0, -gait.forwardSpeed) ** 2 / sp ** 2,
+        sw = gait.sideSpeed ** 2 / sp ** 2;
+      const norm = fw + bw + sw || 1;
+      let strideF = (fw * G.stride.forward + bw * G.stride.backward + sw * G.stride.strafe) / norm;
+      let liftH = (fw * G.lift.forward + bw * G.lift.backward + sw * G.lift.strafe) / norm;
+      strideF += (G.stride.defensive - strideF) * st.wDefensive;
+      liftH += (G.lift.defensive - liftH) * st.wDefensive;
+      strideF += (G.stride.post - strideF) * st.wPost;
+      liftH += (G.lift.post - liftH) * st.wPost;
+      const pace = clamp(gait.speed / config.player[legend].speed, 0, 1);
+      stride = legRig.legLength * strideF * (G.slowStrideScale + (1 - G.slowStrideScale) * pace);
+      // a planted foot is replanted before it leaves the leg's real horizontal reach at the
+      // posture's pelvis height (otherwise the pelvis would have to squat to keep contact)
+      const thighY =
+        legRig.thighHeight - rig.hipH * postureDrop(st, pace) - legRig.legs[0].ankleHeight;
+      const reachRadius = Math.sqrt(
+        Math.max(0, (legRig.legLength * PO.reachSlack) ** 2 - thighY * thighY),
+      );
+      GAIT_TUNING.maxStanceOffset = Math.max(
+        0.12,
+        Math.min(stride * 0.5 + G.overreach, reachRadius * 0.9),
+      );
+      stepGait(
+        gait,
+        {
+          dt: frameDt,
+          travelX,
+          travelZ,
+          velocityX: velocity.x,
+          velocityZ: velocity.z,
+          netSpeed: Math.hypot(st.netX, st.netZ),
+          bodyX: groundPoint.x,
+          bodyZ: groundPoint.z,
+          angle: p.angle,
+          neutral: scratch.neutral,
+          step: { stride, lift: liftH },
+          reset,
+        },
+        GAIT_TUNING,
+      );
+      st.groundReady = true;
+    } else st.groundReady = false;
+    st.moveWeight += ((gait.moving ? 1 : 0) - st.moveWeight) * dampingFactor(10, dt);
+    const mv = st.moveWeight * clamp(gait.speed / config.player[legend].speed, 0, 1);
+    const along = gait.speed > 1e-3 ? gait.forwardSpeed / gait.speed : 0; // +1 fwd, −1 back
 
     hands.reset();
-    // ---------- target pose ----------
+    // ---------- 3. upper-body + spine target pose (rebuilt from REST every frame) ----------
     Object.assign(target, REST);
-    const sw = Math.sin(st.phase * Math.PI * 2);
-    target.lSwing = target.rSwing = 0.25 * mv;
-    target.lKnee = target.rKnee = 0.08 + 0.5 * mv;
-    target.footPlant = st.gaitWeight;
-    target.lPitch = sw * 0.45 * mv;
-    target.rPitch = -sw * 0.45 * mv;
-    target.lElbow = 0.25 + 0.2 * mv;
-    target.rElbow = 0.25 + 0.2 * mv;
-    target.lean = 0.04 + 0.1 * mv + Math.sin(t * (exhausted ? 7 : 3)) * (exhausted ? 0.04 : 0.012);
-    target.crouch = 0.02 + Math.abs(sw) * 0.03 * mv;
+    // arm swing counter to the legs (left arm forward while the left foot is back)
+    const swing = Math.cos(gait.phase * Math.PI * 2) * G.armSwing * mv * Math.abs(along);
+    target.lPitch = swing;
+    target.rPitch = -swing;
+    target.lElbow = target.rElbow = 0.25 + 0.2 * mv;
+    target.lean =
+      0.04 +
+      (along > 0 ? 0.1 * mv : -0.04 * mv) +
+      Math.sin(t * (exhausted ? 7 : 3)) * (exhausted ? 0.04 : 0.012);
 
-    // look at the ball (head yaw in local frame)
+    // look at the ball (head yaw in local frame); chest follows within anatomical limits
     const bx = duel.ball.x - p.x,
       bz = duel.ball.z - p.z;
-    const lx = bx * Math.cos(p.angle) - bz * Math.sin(p.angle),
-      lz = bx * Math.sin(p.angle) + bz * Math.cos(p.angle);
-    const look = Math.atan2(lx, Math.max(0.2, lz));
+    const ballLocalX = bx * Math.cos(p.angle) - bz * Math.sin(p.angle),
+      ballLocalZ = bx * Math.sin(p.angle) + bz * Math.cos(p.angle);
+    const look = Math.atan2(ballLocalX, Math.max(0.2, ballLocalZ));
+    const lookFull = Math.atan2(ballLocalX, ballLocalZ);
+    const ballSide = ballLocalX >= 0 ? 1 : -1; // +1 = ball on the character's left
     target.headYaw = clamp(look * 0.55, -0.7, 0.7);
     target.headPitch = clamp(
       (-(duel.ball.y - rig.headY) / Math.max(1, Math.hypot(bx, bz))) * 0.4,
@@ -319,38 +505,80 @@ export function Character({ index, legend }: CharacterProps) {
       0.35,
     );
 
-    const awaitingPass =
-      (duel.ballState === 'inbound' || duel.ballState === 'pass') && duel.inboundOwner === index;
-    const receiving =
-      awaitingPass &&
-      duel.ballState === 'pass' &&
-      Math.hypot(duel.ball.x - p.x, duel.ball.z - p.z) < config.animation.catchReadyDistance;
-    const holdBall =
-      (receiving || (owner && duel.ballState === 'held' && p.handling === 'hold')) &&
-      p.charge === 0 &&
-      p.mode !== 'post' &&
-      p.mode !== 'spin' &&
-      p.mode !== 'shoot' &&
-      p.mode !== 'dunk';
-    if (holdBall) {
-      // triple threat: ball locked at the chest with BOTH hands, knees bent, eyes on the rim
-      // upper arms down-forward and in, forearms forward-in → palms meet on the ball at the chest
-      target.lPitch = target.rPitch = -0.6;
-      target.lDown = target.rDown = 1.3;
-      target.lElbow = target.rElbow = 1.15;
-      target.lIn = target.rIn = 0.45;
-      target.crouch = 0.07;
-      target.lKnee = target.rKnee = 0.24 + 0.4 * mv;
-      target.lean = 0.14;
-      target.lSwing = target.rSwing = 0.05 + 0.2 * mv;
-      target.spread = 0.09;
+    switch (states.upper) {
+      case 'hold':
+        if (p.charge === 0 && p.mode !== 'post' && p.mode !== 'spin') {
+          // triple threat FK base (hand IK owns the final arm pose)
+          target.lPitch = target.rPitch = -0.6;
+          target.lDown = target.rDown = 1.3;
+          target.lElbow = target.rElbow = 1.15;
+          target.lIn = target.rIn = 0.45;
+          target.lean = 0.14;
+        }
+        break;
+      case 'callForPass': {
+        // one hand up on the ball side, chest and eyes on the passer
+        const up = ballSide > 0;
+        if (up) {
+          target.lPitch = -2.5;
+          target.lDown = 1.1;
+          target.lElbow = 0.35;
+        } else {
+          target.rPitch = -2.5;
+          target.rDown = 1.1;
+          target.rElbow = 0.35;
+        }
+        target.twist = clamp(lookFull * 0.4, -0.35, 0.35);
+        target.headYaw = clamp(lookFull * 0.6, -0.9, 0.9);
+        break;
+      }
+      case 'relaxed':
+        if (awaitingPass) {
+          // off-ball receiver: relaxed arms, chest/head toward the actual ball
+          target.twist = clamp(lookFull * 0.35, -0.3, 0.3);
+          target.headYaw = clamp(lookFull * 0.6, -0.9, 0.9);
+        }
+        break;
+      case 'deny': {
+        // ball-side arm into the passing lane; the other arm bent on the receiver
+        const laneLeft = ballSide > 0;
+        // (down 1.3 = hanging, 0 = straight out to the side; pitch < 0 raises forward)
+        const lane = { pitch: -1.3, down: 1.0, elbow: 0.35 },
+          bar = { pitch: -0.75, down: 1.1, elbow: 1.2 };
+        const l = laneLeft ? lane : bar,
+          r = laneLeft ? bar : lane;
+        target.lPitch = l.pitch;
+        target.lDown = l.down;
+        target.lElbow = l.elbow;
+        target.rPitch = r.pitch;
+        target.rDown = r.down;
+        target.rElbow = r.elbow;
+        target.twist = clamp(lookFull * 0.3, -0.3, 0.3);
+        target.headYaw = clamp(lookFull * 0.65, -1.0, 1.0);
+        target.lean = 0.2;
+        break;
+      }
+      case 'guard': {
+        // on-ball: low, arms moderately spread and bent, ball-side hand a little higher
+        const high = { pitch: -1.2, down: 1.05, elbow: 0.85 },
+          low = { pitch: -0.6, down: 1.1, elbow: 1.0 };
+        const l = ballSide > 0 ? high : low,
+          r = ballSide > 0 ? low : high;
+        target.lPitch = l.pitch;
+        target.lDown = l.down;
+        target.lElbow = l.elbow;
+        target.rPitch = r.pitch;
+        target.rDown = r.down;
+        target.rElbow = r.elbow;
+        target.lean = 0.24;
+        break;
+      }
+      default:
+        break;
     }
-    if (exhausted && p.mode === 'idle' && mv < 0.2) {
+    if (st.wExhausted > 0.5) {
       // hands on knees, sucking air
       target.lean = 0.5 + Math.sin(t * 7) * 0.04;
-      target.crouch = 0.12;
-      target.lKnee = target.rKnee = 0.4;
-      target.lSwing = target.rSwing = 0.2;
       target.lDown = target.rDown = 1.45;
       target.lPitch = target.rPitch = -0.55;
       target.lElbow = target.rElbow = 0.25;
@@ -362,8 +590,6 @@ export function Character({ index, legend }: CharacterProps) {
       target.lPitch = target.rPitch = -(0.6 + 1.15 * r);
       target.lDown = target.rDown = 1.3 - 0.05 * r;
       target.lElbow = target.rElbow = 0.6 + 0.45 * r;
-      target.crouch = 0.08 * (1 - r) + 0.02;
-      target.lKnee = target.rKnee = 0.25 * (1 - r) + 0.08;
       target.headPitch = -0.15;
     }
     switch (p.mode) {
@@ -392,23 +618,16 @@ export function Character({ index, legend }: CharacterProps) {
         break;
       }
       case 'post':
-        target.crouch = 0.17;
-        target.lKnee += 1.02;
-        target.rKnee += 1.02;
-        target.lSwing += 0.55;
-        target.rSwing += 0.55;
-        target.footPlant = 1;
+        // knees/pelvis come from the posture height + foot IK; this is arms + torso only
         target.lean = 0.38;
         if (p.charge === 0) {
           target.lDown = target.rDown = 0.85;
           target.lPitch = target.rPitch = -0.45;
           target.lElbow = target.rElbow = 1.6;
         }
-        target.spread = 0.14;
         if (awaitingPass) {
-          const defender = duel.players[1 - index];
-          const gx = defender.x - p.x,
-            gz = defender.z - p.z;
+          const gx = opponent.x - p.x,
+            gz = opponent.z - p.z;
           const localX = gx * Math.cos(p.angle) - gz * Math.sin(p.angle);
           const localZ = gx * Math.sin(p.angle) + gz * Math.cos(p.angle);
           st.contactSide = contactArm(localX, st.contactSide, config.animation.contactSideDeadzone);
@@ -431,7 +650,6 @@ export function Character({ index, legend }: CharacterProps) {
         target.lPitch = target.rPitch = -0.9;
         target.lElbow = target.rElbow = 1.6;
         target.lean = 0.22;
-        target.crouch = 0.1;
         break;
       case 'stun':
         target.headYaw = Math.sin(t * 14) * 0.45;
@@ -472,33 +690,21 @@ export function Character({ index, legend }: CharacterProps) {
       }
     }
 
-    // jab step: lead foot steps out toward the fake, shoulders and head sell it, pivot foot stays planted
+    // jab step: shoulders and head sell it; the lead foot steps out via IK (pivot stays planted)
     const jabE = p.jab > 0 ? Math.sin(Math.PI * (1 - p.jab / config.handling.jabDuration)) : 0;
+    const jabLx = p.jabX * Math.cos(p.angle) - p.jabZ * Math.sin(p.angle);
     if (jabE > 0) {
-      const jabLx = p.jabX * Math.cos(p.angle) - p.jabZ * Math.sin(p.angle);
-      const jabLz = p.jabX * Math.sin(p.angle) + p.jabZ * Math.cos(p.angle);
-      const step = (0.35 + 0.5 * Math.max(0, jabLz)) * jabE;
-      if (jabLx >= 0) {
-        target.lSwing += step;
-        target.lKnee += 0.35 * jabE;
-      } else {
-        target.rSwing += step;
-        target.rKnee += 0.35 * jabE;
-      }
-      target.spread += Math.abs(jabLx) * 0.25 * jabE;
       target.lean += 0.22 * jabE;
       target.twist += jabLx * 0.45 * jabE;
       target.headYaw += jabLx * 0.35 * jabE;
-      target.crouch += 0.06 * jabE;
     }
     // defender bites on the fake: lunges, reaches, off balance
     if (p.bite > 0) {
       const e = Math.sin(Math.PI * (1 - p.bite / config.handling.jabBite));
-      const bx = p.biteX * Math.cos(p.angle) - p.biteZ * Math.sin(p.angle);
+      const biteX = p.biteX * Math.cos(p.angle) - p.biteZ * Math.sin(p.angle);
       target.lean += 0.3 * e;
-      target.twist += bx * 0.5 * e;
-      target.crouch += 0.08 * e;
-      if (bx >= 0) {
+      target.twist += biteX * 0.5 * e;
+      if (biteX >= 0) {
         target.lPitch = -1.4 * e;
         target.lDown = 0.9;
       } else {
@@ -506,8 +712,15 @@ export function Character({ index, legend }: CharacterProps) {
         target.rDown = 0.9;
       }
     }
+    // posture lean: low defensive stance; bracing leans into the blocker
+    target.lean +=
+      0.18 * st.wDefensive * (states.upper === 'guard' || states.upper === 'deny' ? 0 : 1);
+    if (st.brace > 0.01) {
+      const behind = (opponent.x - p.x) * fx + (opponent.z - p.z) * fz < 0;
+      target.lean += (behind ? -1 : 1) * PO.braceLean * st.brace;
+    }
 
-    // ---------- smooth + apply ----------
+    // ---------- 4. smooth + apply FK (rotations rebuilt from the bind pose) ----------
     const k = dampingFactor(
       p.mode === 'dunk' || p.mode === 'shoot' || p.jab > 0 || p.bite > 0 ? 24 : 14,
       dt,
@@ -526,17 +739,13 @@ export function Character({ index, legend }: CharacterProps) {
     drive(rig, 'RightUpLeg', -pose.rSwing, 0, -pose.spread);
     drive(rig, 'LeftLeg', pose.lKnee, 0, 0);
     drive(rig, 'RightLeg', pose.rKnee, 0, 0);
-    const ankleCompensation = 0.5 + pose.footPlant * 0.5;
-    drive(rig, 'LeftFoot', -(pose.lKnee - pose.lSwing) * ankleCompensation, 0, 0);
-    drive(rig, 'RightFoot', -(pose.rKnee - pose.rSwing) * ankleCompensation, 0, 0);
+    drive(rig, 'LeftFoot', -(pose.lKnee - pose.lSwing) * 0.5, 0, 0);
+    drive(rig, 'RightFoot', -(pose.rKnee - pose.rSwing) * 0.5, 0, 0);
     drive(rig, 'Spine', pose.lean * 0.4, pose.twist * 0.3, 0);
     drive(rig, 'Spine1', pose.lean * 0.3, pose.twist * 0.3, 0);
     drive(rig, 'Spine2', pose.lean * 0.3, pose.twist * 0.4, 0);
     drive(rig, 'Head', pose.headPitch, pose.headYaw, 0, 'YXZ');
-    if (rig.bones.Hips) {
-      rig.bones.Hips.position.copy(rig.hipsRestPosition);
-      rig.bones.Hips.position.y -= pose.crouch;
-    }
+    if (rig.bones.Hips) rig.bones.Hips.position.copy(rig.hipsRestPosition);
 
     // ---------- root: facing, fall, stun wobble, dunk lift ----------
     turn.current.rotation.y = p.angle;
@@ -577,35 +786,96 @@ export function Character({ index, legend }: CharacterProps) {
       st.offX += (0 - st.offX) * g;
       st.offZ += (0 - st.offZ) * g;
     }
+    // a small upper-body "sell" toward the jab; the feet stay on their IK targets
     lift.current.position.set(
-      st.offX + p.jabX * 0.14 * jabE,
+      st.offX + p.jabX * 0.08 * jabE,
       st.liftY,
-      st.offZ + p.jabZ * 0.14 * jabE,
+      st.offZ + p.jabZ * 0.08 * jabE,
     );
-    if (floor.current && groundFeet && p.mode !== 'dunk' && st.liftY < 0.001 && st.downS < 0.001) {
-      // Ground upright poses, including the transition into/out of post. Airborne and
-      // fallen animations keep their own root motion. This runs before updating the grip.
-      floor.current.getWorldPosition(groundPoint);
-      groundFeet(groundPoint.y);
-      if (st.gaitWeight > 0.001 && p.mode !== 'down' && p.mode !== 'spin' && p.mode !== 'shoot') {
-        forward.set(Math.sin(p.angle), 0, Math.cos(p.angle));
-        for (let side = 0; side < legs.length; side++) {
-          const leg = legs[side];
-          if (!leg) continue;
-          const step = sampleFootstep(
-            st.phase + side * 0.5,
-            stride,
-            p.mode === 'post' ? config.animation.postFootLift : config.animation.walkFootLift,
-          );
-          leg.foot.getWorldPosition(footTarget);
-          footTarget.x += st.directionX * step.travel * st.gaitWeight;
-          footTarget.z += st.directionZ * step.travel * st.gaitWeight;
-          footTarget.y += step.lift * st.gaitWeight;
-          leg.solve(footTarget, forward);
-        }
-        groundFeet(groundPoint.y);
+
+    // ---------- 5. pelvis height + grounded foot IK ----------
+    let pelvisDrop = 0,
+      reachDrop = 0;
+    if (legRig && grounded && st.groundReady) {
+      model.updateWorldMatrix(true, true);
+      const sc = scratch;
+      // jab: the lead (non-pivot) foot steps out toward the fake
+      if (jabE > 0) {
+        const lead = jabLx >= 0 ? 0 : 1;
+        const foot = gait.feet[lead].target;
+        foot.x += p.jabX * 0.3 * jabE;
+        foot.z += p.jabZ * 0.3 * jabE;
+        foot.y += 0.05 * jabE;
       }
+      // posture height: one controlled drop (no stacked crouch/knee/grounding offsets)
+      pelvisDrop =
+        postureDrop(st, clamp(gait.speed / config.player[legend].speed, 0, 1)) +
+        // two small dips per cycle, at mid-stance
+        G.bob * st.moveWeight * 0.5 * (1 - Math.cos(gait.phase * Math.PI * 4));
+      const hips = legRig.hips;
+      hips.getWorldPosition(sc.hip);
+      const sway = PO.braceSway * st.brace * Math.sin(t * 2.4);
+      legRig.shiftPelvis(
+        lx * sway,
+        groundPoint.y + rig.hipH * (1 - pelvisDrop) - sc.hip.y,
+        lz * sway,
+      );
+      // if a foot target is out of reach, lower the pelvis just enough (bone lengths kept)
+      for (let i = 0; i < 2; i++) {
+        const leg = legRig.legs[i];
+        leg.thigh.getWorldPosition(sc.hip);
+        const reach = leg.length * PO.reachSlack;
+        const tg = gait.feet[i].target;
+        const horizontal = Math.hypot(tg.x - sc.hip.x, tg.z - sc.hip.z);
+        const need =
+          horizontal >= reach
+            ? sc.hip.y - tg.y
+            : sc.hip.y - (tg.y + Math.sqrt(reach * reach - horizontal * horizontal));
+        reachDrop = Math.max(reachDrop, need);
+      }
+      // bounded: an out-of-reach target is a gait bug, not a reason to squat (it is reported)
+      if (reachDrop > 0) legRig.shiftPelvis(0, -Math.min(reachDrop, PO.maxReachDrop), 0);
+      for (let i = 0; i < 2; i++) {
+        const leg = legRig.legs[i],
+          foot = gait.feet[i],
+          sign = i === 0 ? 1 : -1;
+        // knees track forward and slightly out; the foot is flat with its planted yaw
+        sc.pole.set(fx + lx * sign * 0.2, 0, fz + lz * sign * 0.2).normalize();
+        sc.footWorld.copy(_qy.setFromAxisAngle(_up, foot.yaw)).multiply(leg.restFootQuat);
+        leg.solve(foot.target, sc.pole, sc.footWorld);
+      }
+    } else if (groundFeet && p.mode !== 'dunk' && st.liftY < 0.001 && st.downS < 0.001) {
+      // fallback for rigs without a measurable leg chain
+      groundFeet(groundPoint.y);
     }
+    locomotionDebug[index] = {
+      locomotion: gait.locomotion,
+      posture: states.posture,
+      upper: states.upper,
+      moving: gait.moving,
+      speed: gait.speed,
+      forwardSpeed: gait.forwardSpeed,
+      sideSpeed: gait.sideSpeed,
+      phase: gait.phase,
+      steps: gait.steps,
+      resets: st.resets,
+      brace: st.brace,
+      pelvisDrop,
+      reachDrop,
+      stride,
+      grounded: grounded && st.groundReady,
+      feet: gait.feet.map((f, i) => ({
+        planted: !f.swinging,
+        target: { x: f.target.x, y: f.target.y, z: f.target.z },
+        neutral: {
+          x: scratch.neutral[i].x,
+          y: scratch.neutral[i].y,
+          z: scratch.neutral[i].z,
+        },
+        lift: f.lift,
+        yaw: f.yaw,
+      })),
+    };
     if (blob.current) {
       const sc = (1.15 + st.downS * 0.9) / (1 + st.liftY * 0.6);
       blob.current.scale.set(sc, sc * (1 + st.downS), 1);
@@ -613,16 +883,16 @@ export function Character({ index, legend }: CharacterProps) {
       blob.current.position.set(st.offX, 0.012, st.offZ);
     }
 
-    // The ball controller owns the target; hands only consume its rendered world position.
-    // Rapier interpolation has already updated the ball and character parents this frame.
+    // ---------- 6. hands: the ball controller owns the target (Slice 2) ----------
+    // Hand IK runs after the body pose and owns the arms while holding/dribbling/catching.
     model.updateWorldMatrix(true, true);
     if (bodies.ballMesh) bodies.ballMesh.getWorldPosition(ballPoint);
     else ballPoint.set(duel.ball.x, duel.ball.y, duel.ball.z);
-    floor.current!.getWorldPosition(groundPoint);
-    const bodyPoint = bodies.players[index]?.translation() ?? { x: p.x, y: bodyY, z: p.z };
+    const bodyPoint = body?.translation() ?? { x: p.x, y: bodyY, z: p.z };
     protectedBallTarget(legend, bodyPoint, p.angle, p.mode === 'post', catchPoint);
-    const controlled = owner && duel.ballState === 'held' && p.mode !== 'down' && p.mode !== 'stun';
-    const incoming = awaitingPass && duel.ballState === 'pass';
+    // hands reach for the pass only once it is close: until then the call-for-pass arm
+    // (or relaxed arms) stay visible; IK then owns both arms through the catch
+    const incoming = receiving;
     incomingPoint
       .copy(catchPoint)
       .lerp(

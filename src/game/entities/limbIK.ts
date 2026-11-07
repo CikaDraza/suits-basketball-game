@@ -25,7 +25,11 @@ export function createLimbIK(thigh: Bone, shin: Bone, foot: Bone) {
     bone.updateWorldMatrix(false, true);
   }
 
-  return (target: Vector3, forward: Vector3) => {
+  /**
+   * @param footWorld optional world orientation for the foot (e.g. flat on the court with the
+   *   planted yaw); by default the foot keeps the world orientation it had before solving.
+   */
+  return (target: Vector3, forward: Vector3, footWorld?: Quaternion) => {
     thigh.updateWorldMatrix(true, true);
     thigh.getWorldPosition(hip);
     shin.getWorldPosition(knee);
@@ -54,7 +58,7 @@ export function createLimbIK(thigh: Bone, shin: Bone, foot: Bone) {
       to.copy(hip).addScaledVector(direction, distance).sub(knee),
     );
     foot.parent!.getWorldQuaternion(parent).invert();
-    foot.quaternion.copy(parent).multiply(footRotation);
+    foot.quaternion.copy(parent).multiply(footWorld ?? footRotation);
     foot.updateWorldMatrix(false, true);
   };
 }

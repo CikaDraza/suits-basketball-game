@@ -4,6 +4,7 @@ import { syncBallCollision } from '../physics/ballCollision';
 import { protectedBallTarget, stepBallHandling } from '../simulation/ballHandling';
 import { createInboundPassController } from '../simulation/inboundPassController';
 import { isOnCourt, type PassPoint } from '../simulation/tacticalPass';
+import { approachVelocity } from '../simulation/movement';
 import type { RapierRigidBody } from '@react-three/rapier';
 import { config as c, level, type Legend } from '../data/gameConfig';
 import { playSound as sound } from '../audio/audio';
@@ -98,6 +99,38 @@ function impact(p: Fighter, heavy = false) {
 /** Camera-relative stick → world direction (and back). */
 const { stickToWorld, worldToStick } = createMovementTransform(c.camera.inputAngle);
 const facing = (p: Fighter, x: number, z: number) => Math.atan2(x - p.x, z - p.z);
+/** Player capsules a newly solid (loose/scored) ball is pushed out of. */
+const BALL_CLEARANCE = {
+  players: bodies.players,
+  halfHeight: c.physics.halfHeight,
+  radius: c.physics.radius,
+  ballRadius: c.ball.radius,
+};
+const rampTarget = { x: 0, z: 0 },
+  rampOut = { x: 0, z: 0 };
+/**
+ * Defensive orientation (null = face the direction of travel):
+ * - denial during an inbound: chest on the assigned receiver, opened toward the ball by
+ *   `denyBallBias`, so the denying arm is in the lane (the back is not forced to the ball);
+ * - on-ball: square up to the ball handler inside `guardRange`.
+ */
+function defensiveFacing(i: number): number | null {
+  const p = duel.players[i],
+    o = duel.players[1 - i];
+  if ((duel.ballState === 'inbound' || duel.ballState === 'pass') && i !== duel.inboundOwner) {
+    const toX = o.x - p.x,
+      toZ = o.z - p.z,
+      toL = Math.hypot(toX, toZ) || 1;
+    const bX = duel.ball.x - p.x,
+      bZ = duel.ball.z - p.z,
+      bL = Math.hypot(bX, bZ) || 1;
+    const bias = c.defense.denyBallBias;
+    return Math.atan2(toX / toL + (bX / bL) * bias, toZ / toL + (bZ / bL) * bias);
+  }
+  if (duel.ballState === 'held' && duel.owner === 1 - i && dist(p, o) < c.defense.guardRange)
+    return facing(p, o.x, o.z);
+  return null;
+}
 /** Translate the last rendered hand offset by the body's exact current physics position. */
 function receiverCatchTarget(slot: PlayerSlot): PassPoint {
   const p = duel.players[slot];
@@ -125,7 +158,7 @@ function gain(i: number) {
   duel.pickups++;
   bodies.ball?.setGravityScale(0, true);
   bodies.ball?.setLinvel({ x: 0, y: 0, z: 0 }, true);
-  syncBallCollision(bodies.ball, duel.ballState);
+  syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   sound('dribble');
 }
 function loose(i: number) {
@@ -133,7 +166,7 @@ function loose(i: number) {
   duel.lastTouch = i;
   duel.owner = -1;
   duel.ballState = 'loose';
-  syncBallCollision(bodies.ball, duel.ballState);
+  syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   duel.looseTimer = c.ball.pickupDelay;
   bodies.ball?.setGravityScale(1, true);
   bodies.ball?.setLinvel(
@@ -167,7 +200,7 @@ function inbound(owner: number, reason: InboundReason) {
     if (p.mode === 'contest' || p.mode === 'shoot' || p.mode === 'post') p.mode = 'idle';
   });
   bodies.ball?.setGravityScale(0, true);
-  syncBallCollision(bodies.ball, duel.ballState);
+  syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   bodies.ball?.setTranslation(level.inbound, true);
   bodies.ball?.setLinvel(
     {
@@ -376,7 +409,7 @@ export function resetDuel(seed = 42, scenario?: string) {
   const state = useGameStore.getState();
   Object.assign(duel, createDuelState(state.legends, seed, state.revision));
   duel.lastInboundRequestId = state.inboundRequestSequence;
-  syncBallCollision(bodies.ball, duel.ballState);
+  syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   resetHoop();
   bodies.players.forEach((body, slot) => {
     body?.setTranslation(level.spawns[slot], true);
@@ -769,15 +802,29 @@ export function tickDuel(delta: number) {
       }
       let targetAngle = p.angle;
       if (moving > 0 && p.mode !== 'post') targetAngle = Math.atan2(x, z);
+      const inboundPlay = duel.ballState === 'inbound' || duel.ballState === 'pass';
+      const guardAngle = defensiveFacing(i);
       if (p.mode === 'post')
         targetAngle =
-          !owner && (duel.ballState === 'inbound' || duel.ballState === 'pass')
-            ? facing(p, level.inbound.x, level.inbound.z)
+          !owner && inboundPlay
+            ? facing(p, duel.ball.x, duel.ball.z) // the actual ball/passer, not a fixed spot
             : facing(p, rim.x, rim.z) + Math.PI;
-      else if (anchored || p.charge > 0 || p.mode === 'contest')
-        targetAngle = facing(p, rim.x, rim.z);
+      else if (anchored || p.charge > 0)
+        targetAngle = facing(p, rim.x, rim.z); // triple threat faces the rim
+      else if (p.mode === 'contest') targetAngle = facing(p, o.x, o.z);
+      else if (guardAngle !== null) {
+        targetAngle = guardAngle; // slide/backpedal, chest on the man
+        // heavy defenders slide and backpedal slower than they run forward
+        const len = Math.hypot(x, z);
+        if (len > 1e-6) {
+          const along = (x * Math.sin(p.angle) + z * Math.cos(p.angle)) / len;
+          const slide = 1 - (1 - c.defense.slideSpeed) * (1 - Math.max(0, along));
+          x *= slide;
+          z *= slide;
+        }
+      }
       const turn = Math.atan2(Math.sin(targetAngle - p.angle), Math.cos(targetAngle - p.angle));
-      p.angle += turn * (1 - Math.exp(-c.ballControl.turnRate * dt)); // triple threat faces the rim
+      p.angle += turn * (1 - Math.exp(-c.ballControl.turnRate * dt));
     }
     if (p.bite > 0 && !disabled) {
       x = p.biteX * c.handling.jabBiteSpeed;
@@ -804,28 +851,46 @@ export function tickDuel(delta: number) {
         }
       } else p.angle += dt * c.player.spinTurnRate;
     }
+    // Heavy bodies: ramp the controlled velocity toward the intent (~0.4 s to top speed).
+    // Scripted motion (dunk glide, biting on a fake) and stops while disabled stay direct.
+    if (p.mode === 'dunk' || (p.bite > 0 && !disabled)) {
+      p.moveVX = x;
+      p.moveVZ = z;
+    } else {
+      rampTarget.x = x;
+      rampTarget.z = z;
+      approachVelocity(
+        { x: p.moveVX, z: p.moveVZ },
+        rampTarget,
+        stat.speed,
+        c.movement.accelTime,
+        c.movement.brakeTime,
+        dt,
+        rampOut,
+      );
+      p.moveVX = rampOut.x;
+      p.moveVZ = rampOut.z;
+    }
     p.vx *= Math.exp(-c.physics.damping * dt);
     p.vz *= Math.exp(-c.physics.damping * dt);
+    // vertical velocity and collision response stay with Rapier
     b.setLinvel(
       {
-        x: x + p.vx,
+        x: p.moveVX + p.vx,
         y: b.linvel().y,
-        z: z + p.vz,
+        z: p.moveVZ + p.vz,
       },
       true,
     );
     const bounds = level.bounds;
     const bx = clamp(p.x, bounds.minX, bounds.maxX),
       bz = clamp(p.z, bounds.minZ, bounds.maxZ);
-    if (bx !== p.x || bz !== p.z)
-      b.setTranslation(
-        {
-          x: bx,
-          y: c.physics.bodyY,
-          z: bz,
-        },
-        true,
-      );
+    if (bx !== p.x || bz !== p.z) {
+      // keep the resting height: snapping to the spawn height would pop the body up 3 cm
+      b.setTranslation({ x: bx, y: b.translation().y, z: bz }, true);
+      if (bx !== p.x) p.moveVX = 0;
+      if (bz !== p.z) p.moveVZ = 0;
+    }
     p.energy = clamp(
       p.energy +
         dt *
@@ -906,7 +971,10 @@ export function tickDuel(delta: number) {
           request.receiver,
         );
       }
-    } else inboundPassController.launch(request.receiver);
+    } else {
+      duel.players[request.receiver].passRequestAt = duel.time;
+      inboundPassController.launch(request.receiver);
+    }
   }
   // ---- body contact
   const [a, b] = duel.players,
@@ -943,7 +1011,7 @@ export function tickDuel(delta: number) {
   // ---- ball
   const ball = bodies.ball;
   if (ball) {
-    syncBallCollision(ball, duel.ballState);
+    syncBallCollision(ball, duel.ballState, BALL_CLEARANCE);
     if (duel.ballState !== 'held') duel.ballControl.owner = -1;
     if (duel.ballState === 'held' && duel.owner >= 0) {
       duel.lastTouch = duel.owner;
@@ -999,7 +1067,7 @@ export function tickDuel(delta: number) {
           duel.rim = 1;
           sound('swish');
           duel.ballState = 'scored';
-          syncBallCollision(ball, duel.ballState);
+          syncBallCollision(ball, duel.ballState, BALL_CLEARANCE);
           duel.resetTimer = c.shots.resetDelay + (f.dunk ? c.shots.dunkHang : 0);
           duel.nextOwner = 1 - f.shooter;
           ball.setGravityScale(1, true);
@@ -1039,7 +1107,7 @@ export function tickDuel(delta: number) {
           }
         } else {
           duel.ballState = 'loose';
-          syncBallCollision(ball, duel.ballState);
+          syncBallCollision(ball, duel.ballState, BALL_CLEARANCE);
           duel.looseTimer = c.shots.looseDelay;
           ball.setGravityScale(1, true);
           const ox = f.tx - rim.x,

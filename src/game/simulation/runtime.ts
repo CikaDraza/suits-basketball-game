@@ -54,6 +54,9 @@ function createFighter(slot: number, legend: Legend): Fighter {
     aiJab: false,
     grip: { x: 0, y: 0, z: 0, ok: false },
     gripOffset: { x: 0, y: 0, z: 0 },
+    moveVX: 0,
+    moveVZ: 0,
+    passRequestAt: -Infinity,
   };
 }
 

@@ -57,15 +57,68 @@
     "spinTurnRate": 15
   },
   "animation": {
-    "walkStride": 0.66,
-    "postStride": 0.44,
-    "walkFootLift": 0.12,
-    "postFootLift": 0.065,
-    "motionDeadzone": 0.04,
     "teleportDistance": 0.7,
     "catchReadyDistance": 1.8,
     "contactSideDeadzone": 0.16,
-    "contactReach": 0.55
+    "contactReach": 0.55,
+    "gait": {
+      "startSpeed": 0.18,
+      "stopSpeed": 0.08,
+      "sectorDeg": 50,
+      "sectorMarginDeg": 10,
+      "settleDistance": 0.07,
+      "settleYaw": 0.6,
+      "settleDuration": 0.22,
+      "settleLift": 0.04,
+      "overreach": 0.2,
+      "minFootGap": 0.17,
+      "stride": {
+        "forward": 0.6,
+        "backward": 0.46,
+        "strafe": 0.42,
+        "post": 0.4,
+        "defensive": 0.44
+      },
+      "lift": {
+        "forward": 0.11,
+        "backward": 0.08,
+        "strafe": 0.06,
+        "post": 0.07,
+        "defensive": 0.06
+      },
+      "slowStrideScale": 0.55,
+      "bob": 0.014,
+      "armSwing": 0.38,
+      "velocitySmoothing": 14,
+      "netSmoothing": 6,
+      "startDistance": 0.12,
+      "snapDistance": 0.5
+    },
+    "posture": {
+      "blendRate": 8,
+      "uprightDrop": 0.012,
+      "holdDrop": 0.05,
+      "defensiveDrop": 0.13,
+      "postDrop": 0.165,
+      "braceDrop": 0.03,
+      "exhaustedDrop": 0.09,
+      "holdSpread": 0.03,
+      "defensiveSpread": 0.13,
+      "postSpread": 0.08,
+      "reachSlack": 0.985,
+      "braceSway": 0.03,
+      "braceLean": 0.14,
+      "movingDrop": 0.055,
+      "maxReachDrop": 0.1,
+      "braceSpeedRatio": 0.3
+    },
+    "callForPass": {
+      "fallback": "movement",
+      "requestHold": 0.9,
+      "cutSpeed": 1.2,
+      "cutHold": 1.4
+    },
+    "maxPlausibleSpeed": 9
   },
   "camera": {
     "position": [24.5, 12.34, 7.48],
@@ -284,5 +337,14 @@
       "dribbleForward": 0.24,
       "dribbleTop": 1.1
     }
+  },
+  "movement": {
+    "accelTime": 0.4,
+    "brakeTime": 0.28
+  },
+  "defense": {
+    "guardRange": 3.2,
+    "denyBallBias": 0.6,
+    "slideSpeed": 0.75
   }
 }

@@ -1,3 +1,4 @@
+import type { LocomotionSnapshot } from '../entities/locomotionDebug';
 import { useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
 import { useHarnessStore } from '../state/harnessStore';
@@ -8,6 +9,8 @@ export type TestSeam = {
   requestInboundPass?: (receiver?: 0 | 1) => void;
   getCharacterPose?: (slot: 0 | 1) => CharacterPoseSnapshot | null;
   getHandContacts?: (slot: 0 | 1) => CharacterPoseSnapshot['hands'];
+  /** gait/posture/upper-body diagnostics written by Character each frame */
+  getLocomotion?: (slot: 0 | 1) => LocomotionSnapshot | null;
   setHandling?: (slot: 0 | 1, mode: 'hold' | 'dribble', hand: 1 | -1) => void;
   inspectCharacter?: (view: 'front' | 'side' | null) => void;
   version: string;
@@ -98,6 +101,7 @@ function createDefaultTestSeam(): TestSeam {
     setDebugFlag: (flag, value) => {
       if (flag === 'colliders') harnessStore.getState().setDebugColliders(value);
       if (flag === 'handContacts') harnessStore.getState().setDebugHands(value);
+      if (flag === 'footContacts') harnessStore.getState().setDebugFeet(value);
       if (flag === 'testMode') harnessStore.getState().setTestMode(value);
     },
   };

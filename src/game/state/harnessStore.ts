@@ -4,6 +4,7 @@ interface HarnessStore {
   testMode: boolean;
   debugColliders: boolean;
   debugHands: boolean;
+  debugFeet: boolean;
   inspectionView: 'front' | 'side' | null;
   setInspectionView: (view: 'front' | 'side' | null) => void;
   debugLabels: boolean;
@@ -15,6 +16,7 @@ interface HarnessStore {
   setTestMode: (enabled: boolean) => void;
   setDebugColliders: (enabled: boolean) => void;
   setDebugHands: (enabled: boolean) => void;
+  setDebugFeet: (enabled: boolean) => void;
   setSeed: (seed: number) => void;
   setFps: (fps: number) => void;
   setRendererInfo: (info: { triangles: number; drawCalls: number }) => void;
@@ -25,6 +27,7 @@ export const useHarnessStore = create<HarnessStore>((set) => ({
   testMode: false,
   debugColliders: false,
   debugHands: false,
+  debugFeet: false,
   inspectionView: null,
   setInspectionView: (inspectionView) => set({ inspectionView }),
   debugLabels: false,
@@ -37,6 +40,7 @@ export const useHarnessStore = create<HarnessStore>((set) => ({
 
   setDebugColliders: (enabled) => set({ debugColliders: enabled }),
   setDebugHands: (enabled) => set({ debugHands: enabled }),
+  setDebugFeet: (enabled) => set({ debugFeet: enabled }),
 
   setSeed: (seed) => set({ seed }),
 

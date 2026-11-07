@@ -56,6 +56,11 @@ export interface Fighter {
   grip: { x: number; y: number; z: number; ok: boolean };
   /** Last animated hand position relative to the rigid body's origin. */
   gripOffset: PassPoint;
+  /** Controlled horizontal velocity, ramped toward the stick intent (heavy acceleration). */
+  moveVX: number;
+  moveVZ: number;
+  /** Simulation time of this slot's last explicit inbound pass request. */
+  passRequestAt: number;
 }
 
 export interface PhysicalInboundPass extends InboundPassPlan {
