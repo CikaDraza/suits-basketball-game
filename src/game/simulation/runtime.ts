@@ -1,4 +1,5 @@
 import { config, level, type Legend } from '../data/gameConfig';
+import { createBallHandlingState } from './ballHandling';
 import {
   INITIAL_MESSAGE,
   type BallFlight,
@@ -65,6 +66,7 @@ export function createDuelState(legends: [Legend, Legend], seed = 42, revision =
     owner: level.initialOwner,
     lastTouch: level.initialOwner,
     ballState: 'held' as BallState,
+    ballControl: createBallHandlingState(),
     ball: { x: spawn.x, y: config.ball.holdHeight, z: spawn.z },
     flight: {
       sx: 0,

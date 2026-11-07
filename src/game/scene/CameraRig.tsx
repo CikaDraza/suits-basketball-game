@@ -6,6 +6,7 @@ import { clamp } from '../utils/math';
 import { duel } from '../entities/Duel';
 import { COURT, HOOP } from '../court/constants';
 import { isSimulationRunning } from '../simulation/isSimulationRunning';
+import { useHarnessStore } from '../state/harnessStore';
 
 type Safe = { top: number; right: number; bottom: number; left: number };
 
@@ -54,6 +55,7 @@ function safeArea(h: number): Safe {
  * are solved per screen so the whole court + hoop exactly fill the HUD-free area.
  */
 export function CameraRig() {
+  const inspection = useHarnessStore((s) => s.inspectionView);
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const width = useThree((s) => s.size.width);
   const height = useThree((s) => s.size.height);
@@ -63,6 +65,13 @@ export function CameraRig() {
     const W = width,
       H = height;
     if (W <= 0 || H <= 0) return;
+    if (inspection) {
+      camera.clearViewOffset();
+      camera.fov = 35;
+      camera.near = 0.05;
+      camera.updateProjectionMatrix();
+      return;
+    }
     const [tx, ty, tz] = cam.target,
       [px, , pz] = cam.position;
     // same compass direction as the court design; height and horizontal distance are explicit
@@ -92,9 +101,17 @@ export function CameraRig() {
     // lens shift (keeps the viewing angle): top anchor → safe.top, left anchor → safe.left
     camera.setViewOffset(W, H, W / 2 + uLeft * s - safe.left, H / 2 - vTop * s - safe.top, W, H);
     camera.updateProjectionMatrix();
-  }, [camera, width, height, cam, basePos]);
+  }, [camera, width, height, cam, basePos, inspection]);
 
   useFrame((_, dt) => {
+    if (inspection) {
+      const p = duel.players[0],
+        angle = p.angle + (inspection === 'side' ? Math.PI / 2 : 0);
+      camera.position.set(p.x + Math.sin(angle) * 3.2, 1.6, p.z + Math.cos(angle) * 3.2);
+      camera.lookAt(p.x, 1.15, p.z);
+      camera.updateMatrixWorld();
+      return;
+    }
     if (!isSimulationRunning()) return;
     duel.shake *= Math.exp(-cam.shakeDecay * dt);
     camera.position.copy(basePos);

@@ -7,7 +7,7 @@ import { useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
 import { useHarnessStore } from '../state/harnessStore';
 import { extendTestSeam } from './exposeTestSeam';
-import { readCharacterPose } from './characterPose';
+import { readCharacterPose, readHandContacts } from './characterPose';
 
 /** Keep test adapters out of the scene's rendering and simulation components. */
 export function useDuelTestSeam(): void {
@@ -21,8 +21,18 @@ export function useDuelTestSeam(): void {
         window.setTimeout(resolve, (Math.max(0, frames) * 1000) / config.physics.timestep);
       });
     const projection = new Vector3();
+    const renderedBall = new Vector3();
     const seam = extendTestSeam({
       ready: true,
+      getHandContacts: (slot) =>
+        readHandContacts(scene.getObjectByName(`character-${slot}`) ?? scene),
+      inspectCharacter: (view) => useHarnessStore.getState().setInspectionView(view),
+      setHandling: (slot, mode, hand) => {
+        if (!useHarnessStore.getState().testMode || duel.owner !== slot) return;
+        if (mode === 'hold') useInputStore.getState().flush();
+        duel.players[slot].handling = mode;
+        duel.players[slot].hand = hand;
+      },
       requestInboundPass: (receiver = 0) => useGameStore.getState().requestInboundPass(receiver),
       getCharacterPose: (slot) => readCharacterPose(scene, slot, bodies.players[slot]),
       getState: () => ({
@@ -32,11 +42,13 @@ export function useDuelTestSeam(): void {
           ...duel.players[0],
           grip: { ...duel.players[0].grip },
           y: bodies.players[0]?.translation().y,
+          mass: bodies.players[0]?.mass(),
         },
         opponent: {
           ...duel.players[1],
           grip: { ...duel.players[1].grip },
           y: bodies.players[1]?.translation().y,
+          mass: bodies.players[1]?.mass(),
         },
         ball: {
           ...duel.ball,
@@ -45,7 +57,12 @@ export function useDuelTestSeam(): void {
           velocity: bodies.ball?.linvel(),
           gravityScale: bodies.ball?.gravityScale(),
           sensor: bodies.ball?.collider(0).isSensor(),
+          bodyType: bodies.ball?.bodyType(),
+          rendered: bodies.ballMesh
+            ? { ...bodies.ballMesh.getWorldPosition(renderedBall) }
+            : { ...duel.ball },
         },
+        ballControl: structuredClone(duel.ballControl),
         inboundPass: duel.inboundPass ? structuredClone(duel.inboundPass) : null,
         passes: duel.passes,
         chestPasses: duel.chestPasses,

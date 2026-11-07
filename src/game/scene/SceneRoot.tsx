@@ -24,6 +24,7 @@ export function SceneRoot({ frozen = false }: SceneRootProps) {
       <CameraRig />
       <Environment />
       <Physics
+        updatePriority={-100}
         gravity={config.physics.gravity as [number, number, number]}
         timeStep={1 / config.physics.timestep}
         debug={debug}

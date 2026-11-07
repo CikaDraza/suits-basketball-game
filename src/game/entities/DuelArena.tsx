@@ -56,6 +56,7 @@ function DuelPlayer({ index }: { readonly index: PlayerSlot }) {
       canSleep={false}
     >
       <CapsuleCollider
+        key={legend}
         args={CAPSULE_ARGS}
         mass={config.player[legend].mass}
         friction={0}
@@ -68,6 +69,9 @@ function DuelPlayer({ index }: { readonly index: PlayerSlot }) {
 
 function bindBall(body: RapierRigidBody | null): void {
   bodies.ball = body;
+}
+function bindBallMesh(mesh: Mesh | null): void {
+  bodies.ballMesh = mesh;
 }
 
 function DuelBall() {
@@ -91,7 +95,7 @@ function DuelBall() {
       friction={0.4}
     >
       <BallCollider args={BALL_ARGS} sensor />
-      <mesh>
+      <mesh ref={bindBallMesh}>
         <sphereGeometry args={[config.ball.radius, 20, 12]} />
         <meshStandardMaterial map={texture} color="#ffb171" roughness={0.78} />
       </mesh>

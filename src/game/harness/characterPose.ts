@@ -2,6 +2,7 @@ import { Bone, Object3D, Vector3 } from 'three';
 import type { RapierRigidBody } from '@react-three/rapier';
 import type { PlayerSlot } from '../simulation/types';
 import { forEachFootVertex } from '../entities/footGrounding';
+import type { createArmContact } from '../entities/armContact';
 
 export interface CharacterPoseSnapshot {
   bodyY: number;
@@ -13,6 +14,32 @@ export interface CharacterPoseSnapshot {
   leftSoleY: number;
   rightSoleY: number;
   joints: Record<string, { x: number; y: number; z: number }>;
+  hands: {
+    palm: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    wristBend: number;
+    elbowBend: number;
+    forearmTwist: number;
+    error: number;
+    weight: number;
+    socketPosition: number[];
+    socketQuaternion: number[];
+  }[];
+}
+export function readHandContacts(root: Object3D): CharacterPoseSnapshot['hands'] {
+  let arms: ReturnType<typeof createArmContact>[] = [];
+  root.traverse((object) => {
+    if (object.userData.handContacts) arms = object.userData.handContacts as typeof arms;
+  });
+  return arms.map((arm) => ({
+    ...arm.debug,
+    palm: { ...arm.debug.palm },
+    target: { ...arm.debug.target },
+    normal: { ...arm.debug.normal },
+    socketPosition: arm.socket.position.toArray(),
+    socketQuaternion: arm.socket.quaternion.toArray(),
+  }));
 }
 
 /** On-demand CPU skinning for regression checks; never scans vertices in the frame loop. */
@@ -61,5 +88,6 @@ export function readCharacterPose(
     leftSoleY,
     rightSoleY,
     joints,
+    hands: readHandContacts(root),
   };
 }

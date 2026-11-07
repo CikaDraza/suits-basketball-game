@@ -7,6 +7,9 @@ export type TestSeam = {
   ready: boolean;
   requestInboundPass?: (receiver?: 0 | 1) => void;
   getCharacterPose?: (slot: 0 | 1) => CharacterPoseSnapshot | null;
+  getHandContacts?: (slot: 0 | 1) => CharacterPoseSnapshot['hands'];
+  setHandling?: (slot: 0 | 1, mode: 'hold' | 'dribble', hand: 1 | -1) => void;
+  inspectCharacter?: (view: 'front' | 'side' | null) => void;
   version: string;
   mode: 'dev' | 'test' | 'prod';
   getState: () => Record<string, unknown>;
@@ -94,6 +97,7 @@ function createDefaultTestSeam(): TestSeam {
 
     setDebugFlag: (flag, value) => {
       if (flag === 'colliders') harnessStore.getState().setDebugColliders(value);
+      if (flag === 'handContacts') harnessStore.getState().setDebugHands(value);
       if (flag === 'testMode') harnessStore.getState().setTestMode(value);
     },
   };

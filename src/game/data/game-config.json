@@ -236,7 +236,7 @@
       "boardOvershoot": 0.25,
       "boardAimAboveRim": 0.12,
       "boardLateralFactor": 0.6,
-      "catchRadius": 0.7,
+      "catchRadius": 0.22,
       "interceptRadius": 0.65,
       "interceptWindow": 0.25,
       "interceptReachAboveHead": 0.3,
@@ -261,5 +261,28 @@
     "chestHeight": 0.6,
     "palmForward": 0.09,
     "palmDrop": -0.02
+  },
+  "ballControl": {
+    "period": 0.6,
+    "transitionTime": 0.16,
+    "crossoverForward": 0.18,
+    "turnRate": 14,
+    "armBlendRate": 24,
+    "shaq": {
+      "holdHeight": 1.48,
+      "holdForward": 0.32,
+      "postDrop": 0.18,
+      "hipSide": 0.47,
+      "dribbleForward": 0.26,
+      "dribbleTop": 1.2
+    },
+    "chuck": {
+      "holdHeight": 1.37,
+      "holdForward": 0.29,
+      "postDrop": 0.16,
+      "hipSide": 0.43,
+      "dribbleForward": 0.24,
+      "dribbleTop": 1.1
+    }
   }
 }

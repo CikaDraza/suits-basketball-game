@@ -3,6 +3,9 @@ import { create } from 'zustand';
 interface HarnessStore {
   testMode: boolean;
   debugColliders: boolean;
+  debugHands: boolean;
+  inspectionView: 'front' | 'side' | null;
+  setInspectionView: (view: 'front' | 'side' | null) => void;
   debugLabels: boolean;
   seed: number;
   fps: number;
@@ -11,6 +14,7 @@ interface HarnessStore {
 
   setTestMode: (enabled: boolean) => void;
   setDebugColliders: (enabled: boolean) => void;
+  setDebugHands: (enabled: boolean) => void;
   setSeed: (seed: number) => void;
   setFps: (fps: number) => void;
   setRendererInfo: (info: { triangles: number; drawCalls: number }) => void;
@@ -20,6 +24,9 @@ interface HarnessStore {
 export const useHarnessStore = create<HarnessStore>((set) => ({
   testMode: false,
   debugColliders: false,
+  debugHands: false,
+  inspectionView: null,
+  setInspectionView: (inspectionView) => set({ inspectionView }),
   debugLabels: false,
   seed: 42,
   fps: 0,
@@ -29,6 +36,7 @@ export const useHarnessStore = create<HarnessStore>((set) => ({
   setTestMode: (enabled) => set({ testMode: enabled }),
 
   setDebugColliders: (enabled) => set({ debugColliders: enabled }),
+  setDebugHands: (enabled) => set({ debugHands: enabled }),
 
   setSeed: (seed) => set({ seed }),
 

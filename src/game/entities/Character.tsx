@@ -25,6 +25,9 @@ import { createFaceController } from './faceController';
 import { createFootGrounding } from './footGrounding';
 import { contactArm, sampleFootstep } from './locomotion';
 import { createLimbIK } from './limbIK';
+import { createHandContactPose } from './handContactPose';
+import { protectedBallTarget, smoothUnit } from '../simulation/ballHandling';
+import { HandContactDebug } from './HandContactDebug';
 
 Object.values(MODEL_PATHS).forEach((p) => useGLTF.preload(p));
 
@@ -98,9 +101,7 @@ function buildRig(root: Object3D): Rig {
 
 const _qa = new Quaternion(),
   _qr = new Quaternion(),
-  _e = new Euler(),
-  _gl = new Vector3(),
-  _gr = new Vector3();
+  _e = new Euler();
 /** Rotate a bone by R, expressed in rest-pose model axes (+X = character's left, +Y up, +Z forward). */
 function drive(
   rig: Rig,
@@ -168,7 +169,7 @@ interface CharacterProps {
 /** Rigged GLB characters. Each clone owns its skeleton; geometry/materials belong to the loader cache. */
 export function Character({ index, legend }: CharacterProps) {
   const gltf = useGLTF(MODEL_PATHS[legend]);
-  const { model, rig, face, skeletons, groundFeet, legs, arms } = useMemo(() => {
+  const { model, rig, face, skeletons, groundFeet, legs, hands } = useMemo(() => {
     const model = cloneSkinned(gltf.scene);
     const skeletons = new Set<Skeleton>();
     model.traverse((object) => {
@@ -187,12 +188,7 @@ export function Character({ index, legend }: CharacterProps) {
           foot = rig.bones[`${side}Foot`];
         return thigh && shin && foot ? { foot, solve: createLimbIK(thigh, shin, foot) } : null;
       }),
-      arms: (['Left', 'Right'] as const).map((side) => {
-        const upper = rig.bones[`${side}Arm`],
-          fore = rig.bones[`${side}ForeArm`],
-          hand = rig.bones[`${side}Hand`];
-        return upper && fore && hand ? createLimbIK(upper, fore, hand) : null;
-      }),
+      hands: createHandContactPose(model, legend),
       groundFeet: createFootGrounding(
         model,
         rig.bones.Hips,
@@ -200,7 +196,7 @@ export function Character({ index, legend }: CharacterProps) {
         rig.bones.RightFoot,
       ),
     };
-  }, [gltf.scene]);
+  }, [gltf.scene, legend]);
   const shadowTexture = useMemo(createShadowTexture, []);
   useEffect(() => () => shadowTexture.dispose(), [shadowTexture]);
   useEffect(
@@ -247,8 +243,9 @@ export function Character({ index, legend }: CharacterProps) {
   const groundPoint = useMemo(() => new Vector3(), []);
   const footTarget = useMemo(() => new Vector3(), []);
   const forward = useMemo(() => new Vector3(), []);
-  const holdCenter = useMemo(() => new Vector3(), []);
-  const elbowPole = useMemo(() => new Vector3(), []);
+  const ballPoint = useMemo(() => new Vector3(), []);
+  const catchPoint = useMemo(() => new Vector3(), []);
+  const incomingPoint = useMemo(() => new Vector3(), []);
 
   useFrame((_, rawDt) => {
     if (!isSimulationRunning()) return;
@@ -295,6 +292,7 @@ export function Character({ index, legend }: CharacterProps) {
     const rimDx = hoop.rimWorld.x - p.x,
       rimDz = hoop.rimWorld.z - p.z;
 
+    hands.reset();
     // ---------- target pose ----------
     Object.assign(target, REST);
     const sw = Math.sin(st.phase * Math.PI * 2);
@@ -346,26 +344,6 @@ export function Character({ index, legend }: CharacterProps) {
       target.lean = 0.14;
       target.lSwing = target.rSwing = 0.05 + 0.2 * mv;
       target.spread = 0.09;
-    }
-    if (
-      owner &&
-      duel.ballState === 'held' &&
-      p.handling === 'dribble' &&
-      p.charge === 0 &&
-      p.mode !== 'post' &&
-      p.mode !== 'spin'
-    ) {
-      // dribble: the hand on the ball side pumps with the bounce
-      const pump = Math.abs(Math.cos(t * config.ball.dribbleRate));
-      if (p.hand > 0) {
-        target.lDown = 1.15;
-        target.lPitch = -0.45;
-        target.lElbow = 0.5 + 0.5 * (1 - pump);
-      } else {
-        target.rDown = 1.15;
-        target.rPitch = -0.45;
-        target.rElbow = 0.5 + 0.5 * (1 - pump);
-      }
     }
     if (exhausted && p.mode === 'idle' && mv < 0.2) {
       // hands on knees, sucking air
@@ -635,54 +613,43 @@ export function Character({ index, legend }: CharacterProps) {
       blob.current.position.set(st.offX, 0.012, st.offZ);
     }
 
-    // A held post protects the ball between BOTH hands while the elbows flare
-    // outward. The two rigs share targets rather than relying on identical FK angles.
-    if (
-      owner &&
-      duel.ballState === 'held' &&
-      p.handling === 'hold' &&
-      p.mode === 'post' &&
-      p.charge === 0 &&
-      rig.bones.LeftArm &&
-      rig.bones.RightArm
-    ) {
-      rig.bones.LeftArm.getWorldPosition(holdCenter);
-      rig.bones.RightArm.getWorldPosition(footTarget);
-      holdCenter.add(footTarget).multiplyScalar(0.5);
-      holdCenter.y -= config.player[legend].height * config.handling.postHoldDrop;
-      forward.set(Math.sin(p.angle), 0, Math.cos(p.angle));
-      holdCenter.addScaledVector(forward, config.handling.chestForward);
-      for (let side = 0; side < arms.length; side++) {
-        const sign = side === 0 ? 1 : -1;
-        elbowPole.set(Math.cos(p.angle) * sign, 0, -Math.sin(p.angle) * sign);
-        footTarget
-          .copy(holdCenter)
-          .addScaledVector(elbowPole, config.ball.radius + config.handling.postWristGap);
-        arms[side]?.(footTarget, elbowPole);
-      }
-    }
-
-    // ---------- grip: world point between the palms (Duel locks a held ball here) ----------
-    const lh = rig.bones.LeftHand,
-      rh = rig.bones.RightHand;
-    if (lh && rh) {
-      lh.updateWorldMatrix(true, false);
-      rh.updateWorldMatrix(true, false);
-      _gl.setFromMatrixPosition(lh.matrixWorld);
-      _gr.setFromMatrixPosition(rh.matrixWorld);
-      _gl.add(_gr).multiplyScalar(0.5);
-      // palms sit ahead of the wrists: nudge forward along the facing
-      p.grip.x = _gl.x + Math.sin(p.angle) * config.handling.palmForward;
-      p.grip.y = _gl.y + config.handling.palmDrop;
-      p.grip.z = _gl.z + Math.cos(p.angle) * config.handling.palmForward;
-      p.grip.ok = st.downS < 0.1 && (owner || holdBall);
-      if (floor.current) {
-        floor.current.getWorldPosition(groundPoint);
-        p.gripOffset.x = p.grip.x - groundPoint.x;
-        p.gripOffset.y = p.grip.y - groundPoint.y - bodyY;
-        p.gripOffset.z = p.grip.z - groundPoint.z;
-      }
-    }
+    // The ball controller owns the target; hands only consume its rendered world position.
+    // Rapier interpolation has already updated the ball and character parents this frame.
+    model.updateWorldMatrix(true, true);
+    if (bodies.ballMesh) bodies.ballMesh.getWorldPosition(ballPoint);
+    else ballPoint.set(duel.ball.x, duel.ball.y, duel.ball.z);
+    floor.current!.getWorldPosition(groundPoint);
+    const bodyPoint = bodies.players[index]?.translation() ?? { x: p.x, y: bodyY, z: p.z };
+    protectedBallTarget(legend, bodyPoint, p.angle, p.mode === 'post', catchPoint);
+    const controlled = owner && duel.ballState === 'held' && p.mode !== 'down' && p.mode !== 'stun';
+    const incoming = awaitingPass && duel.ballState === 'pass';
+    incomingPoint
+      .copy(catchPoint)
+      .lerp(
+        ballPoint,
+        1 -
+          smoothUnit((ballPoint.distanceTo(catchPoint) - config.inbound.passing.catchRadius) / 0.4),
+      );
+    hands.update(
+      incoming ? incomingPoint : ballPoint,
+      controlled,
+      incoming,
+      controlled && p.handling === 'dribble' && p.charge === 0,
+      duel.ballControl,
+      groundPoint,
+      p.angle,
+      Math.min(rawDt, 0.25),
+    );
+    model.updateWorldMatrix(true, true);
+    // Compatibility diagnostic, never used as an attachment target by the ball controller.
+    const gripPoint = controlled ? ballPoint : catchPoint;
+    p.grip.x = gripPoint.x;
+    p.grip.y = gripPoint.y;
+    p.grip.z = gripPoint.z;
+    p.grip.ok = controlled || incoming;
+    p.gripOffset.x = gripPoint.x - bodyPoint.x;
+    p.gripOffset.y = gripPoint.y - bodyPoint.y;
+    p.gripOffset.z = gripPoint.z - bodyPoint.z;
 
     // ---------- face: blinks, gaze, jaw ----------
     if (t > st.blinkAt) {
@@ -715,7 +682,7 @@ export function Character({ index, legend }: CharacterProps) {
     st.face.gazeX = st.gx;
     st.face.gazeY = st.gy;
     face(st.face);
-  });
+  }, -50);
 
   return (
     <group ref={floor} name={`character-${index}`} position-y={-bodyY}>
@@ -723,6 +690,7 @@ export function Character({ index, legend }: CharacterProps) {
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial map={shadowTexture} transparent depthWrite={false} opacity={0.85} />
       </mesh>
+      <HandContactDebug arms={hands.arms} />
       <group ref={lift}>
         <group ref={turn}>
           <group ref={fall} position-y={rig.hipH}>

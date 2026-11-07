@@ -19,7 +19,7 @@ interface InboundPassOptions {
   config: GameConfig;
   court: PassCourt;
   source: PassPoint;
-  getHands: (slot: PlayerSlot) => PassPoint;
+  getCatchTarget: (slot: PlayerSlot) => PassPoint;
   onPossession: (slot: PlayerSlot, intercepted: boolean) => void;
   onMessage: (text: string) => void;
   onOutOfBounds: () => void;
@@ -33,7 +33,7 @@ function available(mode: string): boolean {
 
 /** Owns physical inbound flights. No per-frame React state and no position/homing writes. */
 export function createInboundPassController(options: InboundPassOptions) {
-  const { runtime, bodies, config, court, getHands } = options;
+  const { runtime, bodies, config, court, getCatchTarget } = options;
   const settings = config.inbound.passing;
   const gravity = {
     x: config.physics.gravity[0],
@@ -91,7 +91,7 @@ export function createInboundPassController(options: InboundPassOptions) {
     const plan = planInboundPass(
       options.source,
       receiverPosition,
-      getHands(receiver),
+      getCatchTarget(receiver),
       defenderPosition,
       config.player[runtime.players[defender].legend].height,
       gravity,
@@ -107,7 +107,7 @@ export function createInboundPassController(options: InboundPassOptions) {
       receiver,
       elapsed: 0,
       previousBall: { ...plan.source },
-      previousReceiver: getHands(receiver),
+      previousReceiver: getCatchTarget(receiver),
       previousDefender: defenderPosition,
       lastVelocity: { ...plan.velocity },
       enteredCourt: false,
@@ -120,10 +120,12 @@ export function createInboundPassController(options: InboundPassOptions) {
     runtime.passes++;
     if (plan.type === 'lob') runtime.lobPasses++;
     else runtime.chestPasses++;
+    // Set body mode before the launch impulse: a kinematic -> dynamic switch
+    // invalidates any velocity written while it was still kinematic.
+    syncBallCollision(ball, runtime.ballState);
     ball.setTranslation(plan.source, true);
     ball.setGravityScale(1, true);
     ball.setLinvel(plan.velocity, true);
-    syncBallCollision(ball, runtime.ballState);
     options.onLaunch?.();
     options.onMessage(
       plan.type === 'chest'
@@ -205,7 +207,7 @@ export function createInboundPassController(options: InboundPassOptions) {
       return;
     }
 
-    const hands = getHands(flight.receiver);
+    const hands = getCatchTarget(flight.receiver);
     const receiverPosition = position(flight.receiver);
     flight.risky ||=
       flight.type === 'lob' &&

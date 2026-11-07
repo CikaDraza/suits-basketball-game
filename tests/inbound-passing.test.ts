@@ -139,7 +139,9 @@ async function fixture(target = receiver, guard = openDefender) {
     return body;
   });
   const ball = world.createRigidBody(
-    RAPIER.RigidBodyDesc.dynamic().setCcdEnabled(true).setTranslation(source.x, source.y, source.z),
+    RAPIER.RigidBodyDesc.kinematicPositionBased()
+      .setCcdEnabled(true)
+      .setTranslation(source.x, source.y, source.z),
   );
   world.createCollider(
     RAPIER.ColliderDesc.ball(config.ball.radius)
@@ -158,7 +160,7 @@ async function fixture(target = receiver, guard = openDefender) {
     config,
     court,
     source,
-    getHands: (slot) => ({ ...players[slot].translation(), y: 1.45 }),
+    getCatchTarget: (slot) => ({ ...players[slot].translation(), y: 1.45 }),
     onPossession: (slot, intercepted) => {
       caught = slot;
       runtime.owner = slot;

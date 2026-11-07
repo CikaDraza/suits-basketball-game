@@ -1,6 +1,7 @@
 import type { World } from '@dimforge/rapier3d-compat';
 import { COURT, HOOP } from '../court/constants';
 import { syncBallCollision } from '../physics/ballCollision';
+import { protectedBallTarget, stepBallHandling } from '../simulation/ballHandling';
 import { createInboundPassController } from '../simulation/inboundPassController';
 import { isOnCourt, type PassPoint } from '../simulation/tacticalPass';
 import type { RapierRigidBody } from '@react-three/rapier';
@@ -48,9 +49,11 @@ export const duel = createDuelState(['shaq', 'chuck']);
 export const bodies: {
   players: (RapierRigidBody | null)[];
   ball: RapierRigidBody | null;
+  ballMesh: import('three').Mesh | null;
 } = {
   players: [null, null],
   ball: null,
+  ballMesh: null,
 };
 // ---------------------------------------------------------------- helpers
 const random = () => {
@@ -96,27 +99,19 @@ function impact(p: Fighter, heavy = false) {
 const { stickToWorld, worldToStick } = createMovementTransform(c.camera.inputAngle);
 const facing = (p: Fighter, x: number, z: number) => Math.atan2(x - p.x, z - p.z);
 /** Translate the last rendered hand offset by the body's exact current physics position. */
-function playerHands(slot: PlayerSlot): PassPoint {
+function receiverCatchTarget(slot: PlayerSlot): PassPoint {
   const p = duel.players[slot];
   const body = bodies.players[slot]?.translation() ?? { x: p.x, y: c.physics.bodyY, z: p.z };
-  if (p.grip.ok)
-    return { x: body.x + p.gripOffset.x, y: body.y + p.gripOffset.y, z: body.z + p.gripOffset.z };
-  return {
-    x: body.x + Math.sin(p.angle) * c.handling.chestForward,
-    y:
-      body.y -
-      c.physics.halfHeight -
-      c.physics.radius +
-      c.player[p.legend].height * c.handling.chestHeight,
-    z: body.z + Math.cos(p.angle) * c.handling.chestForward,
-  };
+  return protectedBallTarget(p.legend, body, p.angle, p.mode === 'post', { x: 0, y: 0, z: 0 });
 }
 // ---------------------------------------------------------------- possession
 /** Catch / recovery: the ball is locked to the chest with both hands — no dribble yet. */
 function gain(i: number) {
   const p = duel.players[i];
+  if (i === 0) takeReleasedMovements();
   duel.owner = i;
   duel.ballState = 'held';
+  duel.ballControl.owner = -1;
   duel.lastTouch = i;
   p.handling = 'hold';
   cancelHeldMovement(p);
@@ -138,16 +133,9 @@ function loose(i: number) {
   duel.lastTouch = i;
   duel.owner = -1;
   duel.ballState = 'loose';
+  syncBallCollision(bodies.ball, duel.ballState);
   duel.looseTimer = c.ball.pickupDelay;
   bodies.ball?.setGravityScale(1, true);
-  bodies.ball?.setTranslation(
-    {
-      x: p.x + p.hand * c.physics.radius,
-      y: c.ball.holdHeight,
-      z: p.z,
-    },
-    true,
-  );
   bodies.ball?.setLinvel(
     {
       x: p.hand * c.ball.looseKick,
@@ -202,7 +190,7 @@ const inboundPassController = createInboundPassController({
   config: c,
   source: level.inbound,
   court: PASS_COURT,
-  getHands: playerHands,
+  getCatchTarget: receiverCatchTarget,
   onPossession: (slot, intercepted) => {
     if (intercepted) duel.interceptions++;
     gain(slot);
@@ -223,6 +211,14 @@ export function afterDuelPhysicsStep(world: World): void {
   inboundPassController.afterPhysicsStep(world);
   const point = bodies.ball?.translation();
   if (point) {
+    if (
+      duel.ballState === 'held' &&
+      duel.ballControl.mode === 'dribble' &&
+      duel.ballControl.floorEvent
+    ) {
+      duel.ballControl.floorContacts++;
+      duel.ballControl.lastFloorY = point.y;
+    }
     duel.ball.x = point.x;
     duel.ball.y = point.y;
     duel.ball.z = point.z;
@@ -287,11 +283,12 @@ function smash(i: number) {
   o.vx = ((o.x - p.x) / d) * c.ball.smashImpulse;
   o.vz = ((o.z - p.z) / d) * c.ball.smashImpulse;
   duel.ballState = 'smash';
+  const release = bodies.ball?.translation() ?? duel.ball;
   duel.flight = {
     ...duel.flight,
-    sx: p.x,
-    sy: c.ball.holdHeight,
-    sz: p.z,
+    sx: release.x,
+    sy: release.y,
+    sz: release.z,
     tx: o.x,
     ty: c.ball.smashTargetHeight,
     tz: o.z,
@@ -334,10 +331,11 @@ function shoot(i: number) {
   }
   p.energy = Math.max(0, p.energy - c.player.shotCost);
   const missA = Math.PI * (0.15 + random() * 0.7);
+  const release = bodies.ball?.translation() ?? duel.ball;
   duel.flight = {
-    sx: p.x,
-    sy: dunk ? c.ball.holdHeight + 0.4 : stat.height - c.shots.releaseOffset,
-    sz: p.z,
+    sx: release.x,
+    sy: release.y,
+    sz: release.z,
     tx: rim.x + (made ? 0 : Math.sin(missA) * c.shots.missOffset),
     ty: level.hoop.y + (dunk ? c.shots.dunkClearance : made ? 0.05 : 0.08),
     tz: rim.z + (made ? 0 : Math.cos(missA) * c.shots.missOffset),
@@ -769,13 +767,17 @@ export function tickDuel(delta: number) {
         x = w.x * speed;
         z = w.z * speed;
       }
-      if (moving > 0 && p.mode !== 'post') p.angle = Math.atan2(x, z);
+      let targetAngle = p.angle;
+      if (moving > 0 && p.mode !== 'post') targetAngle = Math.atan2(x, z);
       if (p.mode === 'post')
-        p.angle =
+        targetAngle =
           !owner && (duel.ballState === 'inbound' || duel.ballState === 'pass')
             ? facing(p, level.inbound.x, level.inbound.z)
             : facing(p, rim.x, rim.z) + Math.PI;
-      else if (anchored || p.charge > 0 || p.mode === 'contest') p.angle = facing(p, rim.x, rim.z); // triple threat faces the rim
+      else if (anchored || p.charge > 0 || p.mode === 'contest')
+        targetAngle = facing(p, rim.x, rim.z);
+      const turn = Math.atan2(Math.sin(targetAngle - p.angle), Math.cos(targetAngle - p.angle));
+      p.angle += turn * (1 - Math.exp(-c.ballControl.turnRate * dt)); // triple threat faces the rim
     }
     if (p.bite > 0 && !disabled) {
       x = p.biteX * c.handling.jabBiteSpeed;
@@ -942,51 +944,30 @@ export function tickDuel(delta: number) {
   const ball = bodies.ball;
   if (ball) {
     syncBallCollision(ball, duel.ballState);
+    if (duel.ballState !== 'held') duel.ballControl.owner = -1;
     if (duel.ballState === 'held' && duel.owner >= 0) {
       duel.lastTouch = duel.owner;
-      const p = duel.players[duel.owner],
-        h = c.player[p.legend].height;
-      ball.setGravityScale(0, true);
-      ball.setLinvel(
-        {
-          x: 0,
-          y: 0,
-          z: 0,
-        },
-        true,
-      );
-      const fx = Math.sin(p.angle),
-        fz = Math.cos(p.angle);
-      const chest = {
-        x: p.x + fx * c.handling.chestForward,
-        y: h * c.handling.chestHeight,
-        z: p.z + fz * c.handling.chestForward,
+      const p = duel.players[duel.owner];
+      const body = bodies.players[duel.owner]?.translation() ?? {
+        x: p.x,
+        y: c.physics.bodyY,
+        z: p.z,
       };
-      if (p.charge > 0) {
-        const raise = Math.min(1, p.charge / c.shots.perfectTime);
-        ball.setTranslation(
-          {
-            x: p.x + fx * c.physics.radius,
-            y: chest.y + raise * (h - c.ball.foreheadOffset - chest.y),
-            z: p.z + fz * c.physics.radius,
-          },
-          true,
-        );
-      } else if (p.handling === 'hold') {
-        // locked between the palms (Character writes the grip), chest point as fallback
-        ball.setTranslation(playerHands(duel.owner as PlayerSlot), true);
-      } else {
-        const y =
-          c.ball.radius + Math.abs(Math.cos(duel.time * c.ball.dribbleRate)) * c.ball.dribbleHeight;
-        ball.setTranslation(
-          {
-            x: p.x + Math.cos(p.angle) * p.hand * c.ball.handDistance,
-            y,
-            z: p.z - Math.sin(p.angle) * p.hand * c.ball.handDistance,
-          },
-          true,
-        );
-      }
+      const target = stepBallHandling(
+        duel.ballControl,
+        duel.owner,
+        p.legend,
+        body,
+        p.angle,
+        p.handling,
+        p.hand,
+        p.mode === 'post',
+        p.charge,
+        ball.translation(),
+        dt,
+      );
+      ball.setGravityScale(0, true);
+      ball.setNextKinematicTranslation(target);
     } else if (duel.ballState === 'shot' || duel.ballState === 'smash') {
       ball.setGravityScale(0, true);
       ball.setLinvel(
@@ -1002,14 +983,11 @@ export function tickDuel(delta: number) {
       let t = Math.min(1, f.t / f.duration);
       if (duel.ballState === 'smash') t = Math.sin(t * Math.PI);
       const arc = duel.ballState === 'shot' ? f.arc : c.ball.smashArc;
-      ball.setTranslation(
-        {
-          x: f.sx + (f.tx - f.sx) * t,
-          y: f.sy + (f.ty - f.sy) * t + Math.sin(t * Math.PI) * arc,
-          z: f.sz + (f.tz - f.sz) * t,
-        },
-        true,
-      );
+      ball.setNextKinematicTranslation({
+        x: f.sx + (f.tx - f.sx) * t,
+        y: f.sy + (f.ty - f.sy) * t + Math.sin(t * Math.PI) * arc,
+        z: f.sz + (f.tz - f.sz) * t,
+      });
       if (f.t >= f.duration) {
         if (duel.ballState === 'smash') duel.ballState = 'held';
         else if (f.made) {
@@ -1021,6 +999,7 @@ export function tickDuel(delta: number) {
           duel.rim = 1;
           sound('swish');
           duel.ballState = 'scored';
+          syncBallCollision(ball, duel.ballState);
           duel.resetTimer = c.shots.resetDelay + (f.dunk ? c.shots.dunkHang : 0);
           duel.nextOwner = 1 - f.shooter;
           ball.setGravityScale(1, true);
@@ -1060,6 +1039,7 @@ export function tickDuel(delta: number) {
           }
         } else {
           duel.ballState = 'loose';
+          syncBallCollision(ball, duel.ballState);
           duel.looseTimer = c.shots.looseDelay;
           ball.setGravityScale(1, true);
           const ox = f.tx - rim.x,
@@ -1083,7 +1063,7 @@ export function tickDuel(delta: number) {
         }
       }
     } else if (duel.ballState === 'inbound') {
-      ball.setTranslation(level.inbound, true);
+      ball.setNextKinematicTranslation(level.inbound);
       duel.inboundClock -= dt;
       if (duel.inboundStage === 'position' && duel.inboundClock <= 0) {
         duel.inboundStage = 'pass';
