@@ -2,7 +2,7 @@
 
 Browser košarkaška igra: React 19, React Three Fiber, Three.js, Rapier i Zustand.
 
-Potrebni su Node.js 22.13+ i npm. Projekat je proveren i na Node.js 24.
+Za razvoj i kompletne provere koristi Node.js 24 i npm. Build podržava Node.js 22.13+, ali test komanda koristi Node 24 opciju `--test-isolation=none`.
 
 ```bash
 npm ci

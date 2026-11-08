@@ -41,7 +41,9 @@ Ovaj release prihvata taj provereni prikaz; nije nova prerada rig-a ili pravila 
   iz nje. Posle provera ide PR `staging` → `main`; stabilna produkcija ostaje na
   poslednjoj prihvaćenoj verziji dok se PR ne spoji.
 - `Quality` workflow izvršava `npm ci`, `npm run check` i `npm run build` na
-  push/PR za obe grane. Browser provere se izvršavaju pre izdavanja; ovaj workflow
+  Node.js 24, na push/PR za obe grane. Postojeća test komanda koristi
+  `--test-isolation=none`, koji Node.js 22 u prvom CI pokušaju nije prepoznao.
+  Browser provere se izvršavaju pre izdavanja; ovaj workflow
   ne deploy-uje na Vercel niti sam uključuje branch protection.
 
 Korisnik podešava Vercel: Production Branch Tracking → `main`, Staging Branch
