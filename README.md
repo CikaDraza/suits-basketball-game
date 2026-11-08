@@ -23,7 +23,12 @@ Postojeći Chromium može se zadati preko `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
 Playwright automatski pokreće lokalni server kada već nije pokrenut.
 
 Kontrole: WASD/strelice za kretanje, Space/R za šut ili odbranu, Q/J za post/spin,
-Escape za pauzu/nastavak. Na telefonu se koriste džojstik i dva dugmeta u landscape prikazu.
+Escape za pauzu/nastavak. Z/C ili desna palica levo/desno biraju ruku i crossover;
+rade i za dribling u mestu. Na telefonu se koriste džojstik i □/△/○/✕ u landscape
+prikazu. Mape za napad/odbranu i uređaje podešavaju se i pamte kroz Pause → Controls.
+
+Svaki početak i restart ide sa leve aut linije. Ko postigne koš zadržava posed;
+aut pripada protivniku poslednjeg igrača koji je dodirnuo loptu.
 
 [Analiza strukture, primenjena pravila i rezultati provera](docs/code-review.md).
 
@@ -36,3 +41,9 @@ Escape za pauzu/nastavak. Na telefonu se koriste džojstik i dva dugmeta u lands
 [Zagrađivanje: kontaktna ruka, traženje lopte i koraci unazad](docs/post-motion-fix.md).
 
 [Dvoručni hvat u post stavu i tap za jab step](docs/held-ball-fix.md).
+
+[Gameplay Foundation v2: plan, status S00–S16 i regresioni baseline](plan.md).
+
+[S01: ceo ciklus driblinga, kalibracija i stvarni rezultati provere](docs/gameplay/S01_IMPLEMENTATION_REPORT.md).
+
+[Korekcija driblinga prema povratnoj informaciji: opružanje, laktovi i crossover](docs/gameplay/DRIBBLE_FEEDBACK_FIX.md).

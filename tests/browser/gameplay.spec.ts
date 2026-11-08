@@ -12,7 +12,7 @@ test('loads the scene, moves directly into a dribble, and charges/releases a sho
   });
   await bootGame(page);
   await page.screenshot({ path: info.outputPath('desktop.png') });
-  await page.evaluate(() => window.__TEST__!.reset(42));
+  await page.evaluate(() => window.__TEST__!.reset(42, 'live'));
 
   const start = await page.evaluate(
     () => window.__TEST__!.getState().player as { x: number; z: number },
@@ -84,7 +84,7 @@ test('reuses model requests across matchup changes and resets inbound state', as
     .poll(() => page.evaluate(() => window.__TEST__!.getState().phase))
     .toBe('INBOUND_PHASE');
   await expect(page.locator('.inbound-countdown')).toBeVisible();
-  await page.evaluate(() => window.__TEST__!.reset(42));
+  await page.evaluate(() => window.__TEST__!.reset(42, 'live'));
   await expect.poll(() => page.evaluate(() => window.__TEST__!.getState().phase)).toBe('LIVE');
   const reset = await page.evaluate(() => window.__TEST__!.getState());
   expect(reset.score).toBe(0);

@@ -4,6 +4,7 @@ import { config, type Legend } from '../../game/data/gameConfig';
 import { useGameStore } from '../../game/state/gameStore';
 import { HelpScreen } from './HelpScreen';
 import { JabaliBranding } from './JabaliBranding';
+import { ControlsSettings } from './ControlsSettings';
 
 const legends: readonly Legend[] = ['shaq', 'chuck'];
 
@@ -48,8 +49,9 @@ function SoundToggle() {
 }
 
 export function PauseMenu() {
-  const [help, setHelp] = useState(false);
-  if (help) return <HelpScreen onBack={() => setHelp(false)} />;
+  const [view, setView] = useState<'pause' | 'help' | 'controls'>('pause');
+  if (view === 'help') return <HelpScreen onBack={() => setView('pause')} />;
+  if (view === 'controls') return <ControlsSettings onBack={() => setView('pause')} />;
   return (
     <div className="full-panel">
       <span className="eyebrow">TIMEOUT · NO REF REQUIRED</span>
@@ -74,8 +76,11 @@ export function PauseMenu() {
         <button type="button" onClick={() => useGameStore.getState().reset()}>
           NEW DUEL
         </button>
-        <button type="button" onClick={() => setHelp(true)}>
+        <button type="button" onClick={() => setView('help')}>
           HOW TO BRAWL
+        </button>
+        <button type="button" onClick={() => setView('controls')}>
+          CONTROLS / KONTROLE
         </button>
         <SoundToggle />
       </div>

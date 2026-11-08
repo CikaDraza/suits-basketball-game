@@ -1,5 +1,26 @@
 # SUITS — No Fouls / One full half-court duel
 
+## Gameplay Foundation v2 — aktuelni plan, 2026-11-07
+
+Dalji razvoj vodi [kanonski predlog Gameplay Foundation v2](docs/gameplay/SUITS_GAMEPLAY_FOUNDATION_V2_2026_11_07.md).
+Napredak vodi isključivo [IMPLEMENTATION_STATUS](docs/gameplay/IMPLEMENTATION_STATUS.md).
+S00 beleži pregled i baseline na `main` commitu `465f6e0`; S01–S16 nisu implementirani
+ovom dokumentacionom promenom. Raniji „Slice 2/3“ nisu novi S02/S03.
+
+- [Audit vlasništva, postojećih funkcija i dopune zavisnosti](docs/gameplay/FOUNDATION_AUDIT.md)
+- [Registar 30 scenarija i kriterijumi dokaza](docs/gameplay/SCENARIO_REGISTRY.md)
+- [Input i gameplay action ugovor](docs/gameplay/INPUT_CONTRACT.md)
+- [Katalog animacionih referenci](docs/gameplay/ANIMATION_REFERENCE_CATALOG.md)
+- [Tuning i dijagnostika](docs/gameplay/GAMEPLAY_TUNING.md)
+- [Stvarni rezultati regresionog baseline-a](docs/gameplay/REGRESSION_BASELINE.md)
+- [Dogovoreni predlog S01](docs/gameplay/S01_IMPLEMENTATION_PROPOSAL.md)
+- [S01 implementacija, merenja i verifikacija](docs/gameplay/S01_IMPLEMENTATION_REPORT.md)
+
+Ostatak fajla čuva istorijski plan i ranije odluke. Stari navodi o primitivnim
+modelima, `public/data/levels`, homing pasu i 0,8 s hold pravilu nisu opis sadašnjeg
+koda. Aktuelni inventar i vremenske pragove proveravati u auditu i input ugovoru;
+zaštićena odluka o kameri ostaje na snazi.
+
 ## Fantasy
 A weighty, funny, one-hoop basketball brawl between retired Shaq and Chuck, dressed for the boardroom rather than the paint.
 

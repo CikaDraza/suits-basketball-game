@@ -69,8 +69,11 @@ test('an open lane uses a physical chest pass aimed at current hands after the r
   expect(pass.source).toEqual({ x: 5.2, y: 1, z: 7.85 });
   await expect.poll(async () => (await flight(page))?.outcome).toBe('caught');
   const state = await snapshot(page);
-  expect(state.owner).toBe(0);
+  // Catch is published after physics; the low-frequency HUD can still describe
+  // the previous tick. Assert gameplay immediately and HUD convergence separately.
+  expect(state.ball).toMatchObject({ owner: 0, state: 'held' });
   expect((state.player as { handling: string }).handling).toBe('hold');
+  await expect.poll(async () => (await snapshot(page)).owner).toBe(0);
   await page.screenshot({ path: info.outputPath('chest-caught.png') });
 });
 
@@ -118,14 +121,14 @@ test('R intercepts an incoming CPU pass when the player crosses the actual path'
   await page.evaluate(() => window.__TEST__!.setInput({ actionA: false }));
 });
 
-test('a real basket and an out-of-bounds ball both restart from the same left sideline', async ({
+test('the scorer keeps the left-sideline inbound, but last-touch out awards the opponent', async ({
   page,
 }) => {
   await bootGame(page);
   await page.bringToFront();
   await page.locator('canvas').click({ position: { x: 10, y: 10 } });
   await page.evaluate(async () => {
-    await window.__TEST__!.reset(42);
+    await window.__TEST__!.reset(42, 'live');
     window.__TEST__!.teleport('player', [1.6, 0.95, 0]);
     window.__TEST__!.teleport('opponent', [9, 0.95, 4]);
   });
@@ -138,7 +141,8 @@ test('a real basket and an out-of-bounds ball both restart from the same left si
     await page.keyboard.up('r');
   }
   await expect.poll(async () => (await snapshot(page)).score).toBe(1);
-  await expect.poll(async () => (await snapshot(page)).inbound).toMatchObject({ owner: 1 });
+  // Make-it-take-it: the scorer gets the next left-sideline inbound.
+  await expect.poll(async () => (await snapshot(page)).inbound).toMatchObject({ owner: 0 });
   const checkSpot = async () => {
     const ball = (await snapshot(page)).ball as { x: number; y: number; z: number; state: string };
     expect(ball.state).toBe('inbound');
@@ -148,7 +152,7 @@ test('a real basket and an out-of-bounds ball both restart from the same left si
   };
   await checkSpot();
   await page.evaluate(async () => {
-    await window.__TEST__!.reset(42);
+    await window.__TEST__!.reset(42, 'live');
     window.__TEST__!.teleport('ball', [15, 1, 0]);
   });
   await expect.poll(async () => (await snapshot(page)).inbound).toMatchObject({ owner: 1 });
@@ -164,4 +168,40 @@ test('the autonomous CPU requests its inbound and meets the physical receiving p
   expect((await flight(page))!.receiver).toBe(1);
   await expect.poll(async () => (await flight(page))?.outcome).toBe('caught');
   await expect.poll(async () => (await snapshot(page)).owner).toBe(1);
+  await page.evaluate(() => {
+    window.__TEST__!.setDebugFlag('testMode', true);
+    window.__TEST__!.teleport('ball', [15, 1, 0]);
+  });
+  await expect.poll(async () => (await snapshot(page)).inbound).toMatchObject({ owner: 0 });
+});
+
+test('production boot and New Duel both begin at the left-sideline inbound', async ({
+  page,
+}, info) => {
+  // Do not use bootGame: it intentionally requests the live mechanics fixture.
+  await page.goto('./');
+  await page.waitForFunction(
+    () => window.__TEST__?.ready && window.__TEST__.getEntities().length >= 3,
+  );
+  await page.evaluate(() => window.__TEST__!.setDebugFlag('testMode', true));
+  const expectOpening = async () => {
+    await expect
+      .poll(async () => (await snapshot(page)).inbound)
+      .toMatchObject({ owner: 0, stage: 'position' });
+    const state = await snapshot(page);
+    expect(state.ball).toMatchObject({ state: 'inbound', owner: -1 });
+    const ball = state.ball as { x: number; y: number; z: number };
+    expect(ball.x).toBeCloseTo(5.2, 5);
+    expect(ball.y).toBeCloseTo(1, 5);
+    expect(ball.z).toBeCloseTo(7.85, 5);
+    expect(state.score).toBe(0);
+    expect(state.cpuScore).toBe(0);
+  };
+  await expectOpening();
+  await page.evaluate(() => window.__TEST__!.reset(42, 'live'));
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'NEW DUEL', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'NEW DUEL', exact: true }).click();
+  await expectOpening();
+  await page.screenshot({ path: info.outputPath('new-duel-inbound.png') });
 });

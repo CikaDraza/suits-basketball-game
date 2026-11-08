@@ -3,6 +3,7 @@ import { enableAudio } from '../../game/audio/audio';
 import { useGameStore } from '../../game/state/gameStore';
 import { useInputStore } from '../../game/state/inputStore';
 import { clamp } from '../../game/utils/math';
+import { useControlSettingsStore } from '../../game/state/controlSettingsStore';
 import { GAME_INPUT_EVENT, type GameInputEvent } from './types';
 
 const digitalActions = ['MOVE_LEFT', 'MOVE_RIGHT', 'MOVE_UP', 'MOVE_DOWN'] as const;
@@ -21,6 +22,8 @@ export function useInputBridge() {
     const actions = {
       ACTION_A: { keyboard: false, touch: false, external: false },
       ACTION_B: { keyboard: false, touch: false, external: false },
+      HAND_LEFT: { keyboard: false, touch: false, external: false },
+      HAND_RIGHT: { keyboard: false, touch: false, external: false },
     };
     const updateAxis = () =>
       useInputStore
@@ -68,11 +71,22 @@ export function useInputBridge() {
         updateAxis();
       }
       const input = useInputStore.getState();
-      if (action === 'ACTION_A' || action === 'ACTION_B') {
+      if (
+        action === 'ACTION_A' ||
+        action === 'ACTION_B' ||
+        action === 'HAND_LEFT' ||
+        action === 'HAND_RIGHT'
+      ) {
         const sources = actions[action];
         sources[source ?? 'external'] = phase === 'down';
         input.setAction(
-          action === 'ACTION_A' ? 'actionA' : 'actionB',
+          action === 'ACTION_A'
+            ? 'actionA'
+            : action === 'ACTION_B'
+              ? 'actionB'
+              : action === 'HAND_LEFT'
+                ? 'handLeft'
+                : 'handRight',
           Object.values(sources).some(Boolean),
         );
       }
@@ -84,6 +98,9 @@ export function useInputBridge() {
       if (state.screen !== previous.screen || state.revision !== previous.revision) flush();
     });
 
+    const unsubscribeSettings = useControlSettingsStore.subscribe((next, previous) => {
+      if (next.profile !== previous.profile) flush();
+    });
     window.addEventListener(GAME_INPUT_EVENT, onInput);
     window.addEventListener('blur', flush);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -92,6 +109,7 @@ export function useInputBridge() {
       window.removeEventListener('blur', flush);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       unsubscribe();
+      unsubscribeSettings();
       flush();
     };
   }, []);

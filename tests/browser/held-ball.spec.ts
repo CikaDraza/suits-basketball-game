@@ -11,7 +11,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await page.locator('canvas').click({ position: { x: 10, y: 10 } });
     await page.evaluate(async (legend) => {
       window.__TEST__!.setLegend!(0, legend);
-      await window.__TEST__!.reset(42);
+      await window.__TEST__!.reset(42, 'live');
       window.__TEST__!.teleport('player', [5, 0.95, 0]);
       window.__TEST__!.teleport('opponent', [2, 0.95, -2]);
     }, legend);
@@ -51,7 +51,7 @@ test('a released tap jabs, a held direction dribbles without another jab, and bl
   await bootGame(page);
   await page.bringToFront();
   await page.locator('canvas').click({ position: { x: 10, y: 10 } });
-  await page.evaluate(() => window.__TEST__!.reset(42));
+  await page.evaluate(() => window.__TEST__!.reset(42, 'live'));
   // Dispatch a complete real input path within one task: no physics frame can see the held level.
   await page.evaluate(() => {
     window.dispatchEvent(
@@ -72,7 +72,7 @@ test('a released tap jabs, a held direction dribbles without another jab, and bl
     await page.keyboard.up('ArrowRight');
   }
   await page.evaluate(async () => {
-    await window.__TEST__!.reset(42);
+    await window.__TEST__!.reset(42, 'live');
     window.__TEST__!.setInput({ moveX: 1 });
     window.dispatchEvent(new Event('blur'));
   });

@@ -420,7 +420,7 @@ export function Character({ index, legend }: CharacterProps) {
       for (let i = 0; i < 2; i++) {
         const leg = legRig.legs[i],
           sign = i === 0 ? 1 : -1;
-        const x = leg.restFoot.x + sign * spread,
+        const x = sign * Math.max(Math.abs(leg.restFoot.x) + spread, G.minFootGap * 0.5),
           z = leg.restFoot.z;
         scratch.neutral[i].set(
           groundPoint.x + lx * x + fx * z,
@@ -840,7 +840,13 @@ export function Character({ index, legend }: CharacterProps) {
           foot = gait.feet[i],
           sign = i === 0 ? 1 : -1;
         // knees track forward and slightly out; the foot is flat with its planted yaw
-        sc.pole.set(fx + lx * sign * 0.2, 0, fz + lz * sign * 0.2).normalize();
+        sc.pole
+          .set(
+            fx + lx * sign * (0.45 + st.wPost * 0.35),
+            0,
+            fz + lz * sign * (0.45 + st.wPost * 0.35),
+          )
+          .normalize();
         sc.footWorld.copy(_qy.setFromAxisAngle(_up, foot.yaw)).multiply(leg.restFootQuat);
         leg.solve(foot.target, sc.pole, sc.footWorld);
       }

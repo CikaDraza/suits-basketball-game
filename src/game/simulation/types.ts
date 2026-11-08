@@ -21,6 +21,7 @@ export interface Fighter {
   vx: number;
   vz: number;
   hand: number;
+  manualHand: boolean;
   lastQ: number;
   lastR: number;
   taps: number;

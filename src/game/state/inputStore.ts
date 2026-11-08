@@ -3,13 +3,15 @@ import { clamp } from '../utils/math';
 import { config } from '../data/gameConfig';
 import { createMovementTracker } from '../simulation/heldMovement';
 
-export type InputAction = 'actionA' | 'actionB' | 'pause';
+export type InputAction = 'actionA' | 'actionB' | 'handLeft' | 'handRight' | 'pause';
 
 interface InputState {
   moveX: number;
   moveZ: number;
   actionA: boolean;
   actionB: boolean;
+  handLeft: boolean;
+  handRight: boolean;
   pause: boolean;
 }
 
@@ -24,6 +26,8 @@ const EMPTY_INPUT: InputState = {
   moveZ: 0,
   actionA: false,
   actionB: false,
+  handLeft: false,
+  handRight: false,
   pause: false,
 };
 
@@ -31,6 +35,10 @@ const normalizeAxis = (value: number) => (Number.isFinite(value) ? clamp(value, 
 
 // Cancellation also covers gamepads and an empty flush without notifying UI subscribers.
 let inputResetVersion = 0;
+const buttonEdges: { action: InputAction; active: boolean }[] = [];
+export function takeButtonEdges() {
+  return buttonEdges.splice(0);
+}
 export const getInputResetVersion = () => inputResetVersion;
 const movement = createMovementTracker(config.player.minMove);
 export const getHeldMovementDuration = () => movement.duration(performance.now() / 1000);
@@ -48,13 +56,24 @@ export const useInputStore = create<InputStore>((set) => ({
     });
   },
   setAction: (action, active) => {
-    set((state) => (state[action] === active ? state : { [action]: active }));
+    set((state) => {
+      if (state[action] === active) return state;
+      if (buttonEdges.length < 128) buttonEdges.push({ action, active });
+      return { [action]: active };
+    });
   },
   flush: () => {
     inputResetVersion++;
     movement.cancel();
+    buttonEdges.length = 0;
     set((state) =>
-      state.moveX === 0 && state.moveZ === 0 && !state.actionA && !state.actionB && !state.pause
+      state.moveX === 0 &&
+      state.moveZ === 0 &&
+      !state.actionA &&
+      !state.actionB &&
+      !state.handLeft &&
+      !state.handRight &&
+      !state.pause
         ? state
         : EMPTY_INPUT,
     );

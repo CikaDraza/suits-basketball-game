@@ -23,5 +23,6 @@ export async function bootGame(page: Page): Promise<void> {
     );
   });
   await page.evaluate(() => window.__TEST__!.setDebugFlag('testMode', true));
+  await page.evaluate(() => window.__TEST__!.reset(42, 'live'));
   await expect(page.locator('canvas')).toBeVisible();
 }
