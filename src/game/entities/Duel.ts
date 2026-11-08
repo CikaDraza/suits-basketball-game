@@ -37,6 +37,7 @@ import {
   getPadNeutral,
 } from '../input/gamepadInput';
 import { setControlContextReader } from '../input/controlContext';
+import { createDribbleSkillBuffer } from '../input/dribbleSkillBuffer';
 import { hoopImpulse, hangOnRim, resetHoop } from '../court/hoopRig';
 
 export type { Fighter, Mode, Handling, InboundStage } from '../simulation/types';
@@ -63,6 +64,49 @@ const inputContext = (slot: number) =>
     : ('defense' as const);
 setControlContextReader(inputContext);
 const padGate = createPadGate();
+const cameraRise = c.camera.height - c.camera.target[1];
+const skillVerticalScale = cameraRise / Math.hypot(c.camera.horizontalDistance, cameraRise);
+export const skillInputs = [0, 1].map(() =>
+  createDribbleSkillBuffer(c.camera.inputAngle, skillVerticalScale),
+);
+
+/** Observe skill edges before Rapier; a release in a render frame cannot erase a pending command. */
+export function sampleDuelSkillInput() {
+  const settings = useControlSettingsStore.getState();
+  const pads = navigator.getGamepads?.() ?? [];
+  const version = getInputResetVersion();
+  for (let slot = 0; slot < 2; slot++) {
+    const pad = nthConnectedPad(pads, slot);
+    const neutral = getPadNeutral(settings.profile, pad);
+    const allowed = padGate(pad, slot, version, settings.profile.deadzone, neutral);
+    const mapped = readGamepadInput(
+      allowed ? pad : null,
+      settings.profile[inputContext(slot)],
+      settings.profile.deadzone,
+      neutral,
+    );
+    const player = duel.players[slot];
+    skillInputs[slot].sample({
+      device: pad ? JSON.stringify([pad.id, pad.index, pad.axes.length]) : null,
+      version,
+      vector: mapped.skill,
+      hand: mapped.hand,
+      facing: player.angle,
+      enabled: allowed && isSimulationRunning() && !settings.capturing,
+      eligible:
+        duel.owner === slot &&
+        duel.ballState === 'held' &&
+        player.charge === 0 &&
+        player.mode !== 'down' &&
+        player.mode !== 'stun' &&
+        player.mode !== 'dunk',
+      crossing:
+        duel.ballControl.owner === slot &&
+        duel.ballControl.mode === 'dribble' &&
+        duel.ballControl.crossing,
+    });
+  }
+}
 export const bodies: {
   players: (RapierRigidBody | null)[];
   ball: RapierRigidBody | null;
@@ -163,7 +207,6 @@ function gain(i: number) {
   duel.ballControl.owner = -1;
   duel.lastTouch = i;
   p.handling = 'hold';
-  p.manualHand = false;
   cancelHeldMovement(p);
   p.jab = 0;
   p.charge = 0;
@@ -504,6 +547,7 @@ function controls(i: number, dt: number): Input {
     settings.profile.deadzone,
     neutral,
   );
+  const padHand = skillInputs[i].take()?.hand ?? 0;
   if (i === 0) {
     let x = input.moveX + mapped.x,
       z = input.moveZ + mapped.z;
@@ -516,7 +560,8 @@ function controls(i: number, dt: number): Input {
     for (const edge of edges)
       if (edge.active && (edge.action === 'handLeft' || edge.action === 'handRight'))
         edgeHand = edge.action === 'handLeft' ? 1 : -1;
-    const hand = mapped.hand || (input.handLeft ? 1 : input.handRight ? -1 : edgeHand);
+    // Explicit key/touch edges take priority if two devices issue a command in the same tick.
+    const hand = edgeHand || padHand;
     return {
       x,
       z,
@@ -530,13 +575,20 @@ function controls(i: number, dt: number): Input {
       releases,
     };
   }
-  if (pad && (Math.hypot(mapped.x, mapped.z) > 0 || mapped.q || mapped.r || mapped.hand))
+  if (
+    pad &&
+    (Math.hypot(mapped.x, mapped.z) > 0 ||
+      mapped.q ||
+      mapped.r ||
+      mapped.hand ||
+      padHand ||
+      Math.hypot(mapped.skill.x, mapped.skill.z) > 0)
+  )
     duel.p2Human = true;
   if (!pad && duel.p2Human) {
     duel.p2Human = false;
-    duel.players[i].manualHand = false;
   }
-  if (duel.p2Human) return mapped;
+  if (duel.p2Human) return { ...mapped, hand: padHand };
   if (useHarnessStore.getState().testMode) return { x: 0, z: 0, q: false, r: false };
   return cpu(i, dt);
 }
@@ -786,23 +838,17 @@ export function tickDuel(delta: number) {
         else p.charge = 0;
         if (p.mode === 'contest') p.mode = 'idle';
       }
-      if (owner && input.hand) {
+      const crossing =
+        duel.ballControl.owner === i &&
+        duel.ballControl.mode === 'dribble' &&
+        duel.ballControl.crossing;
+      if (owner && input.hand && p.charge === 0 && !crossing) {
         p.hand = input.hand;
-        p.manualHand = true;
         if (p.handling === 'hold' && p.charge === 0) {
           p.handling = 'dribble';
           p.jab = 0;
           duel.dribbles++;
         }
-      }
-      if (
-        !p.manualHand &&
-        Math.sign(input.x) !== Math.sign(p.prevX) &&
-        Math.abs(input.x) > c.player.minMove
-      ) {
-        p.hand = Math.sign(input.x);
-        if (p.mode === 'post' && !(owner && p.handling === 'hold'))
-          p.vx += p.hand * c.player.jukeImpulse;
       }
     }
     // ---- release a short tap to jab; a continuing press commits straight to the dribble
@@ -1082,6 +1128,7 @@ export function tickDuel(delta: number) {
         p.charge,
         ball.translation(),
         dt,
+        duel.players[1 - duel.owner],
       );
       ball.setGravityScale(0, true);
       ball.setNextKinematicTranslation(target);

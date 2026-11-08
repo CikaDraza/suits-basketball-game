@@ -211,3 +211,26 @@ Elbow pole se menja samo u driblingu; hold ostaje sa laktovima spolja.
 `movingDrop` 0.07, a spread hold/defensive/post je 0.065/0.16/0.15 m.
 Korisnički razlog, kalibracija i stvarno izvršene provere su u
 [dopuni driblinga](DRIBBLE_FEEDBACK_FIX.md); istorijske vrednosti iznad nisu aktuelni tuning.
+
+## DRIBBLE-1 — izbor ruke i zaštićeni profil
+
+Aktuelni dodatak (2026-11-08) koristi `ballControl.postDribble`, sa blend brzinom
+4/s, pritiskom u opsegu 1,8 m do punog pritiska na 0,8 m i maksimalnim pomerajem
+prostora lopte 0,015 m bočno / 0,025 m napred. Shaq/Chuck post profili imaju
+`hipSide` 0,57/0,53 m, `dribbleForward` 0,42/0,41 m, `dribbleTop` 1,13/1,05 m,
+`drop` 0,23/0,21 m, `retractSide` 0,14/0,12 m i `retractForward` 0,06/0,05 m.
+Postojeći smer elbow pole-a 0,08/−1,2 ostaje stabilan. `dribbleProfile.ts` izvodi
+jedan profil po fizičkom koraku; koriste ga i `ballHandling.ts` i IK prezentacija.
+Protivnik prilagođava razmak, nikada izabranu ruku. Nema drugog bounce sata.
+
+`skillGesture.ts` centralizuje pragove obrađene palice: aktiviranje 0,65, ponovno
+naoružavanje u neutralnom položaju ≤0,25 i minimalnu bočnu projekciju >0,25.
+`gamepadInput.ts` prethodno primenjuje jednu radijalnu mrtvu zonu iz sačuvanog
+profila (default 0,18). `dribbleSkillBuffer.ts` pamti opaženu ivicu do fizičkog
+koraka. Ovo je ograničeni izbor ruke, ne opšti S02 technique/replay sistem.
+`getState().skillInput` prikazuje aktiviranja, odbijanja, pending zahtev i
+orijentaciju na aktiviranju; `ballControl` izlaže `postBlend`, `shape` i pritisak.
+
+Izmereni dohvati stvarnih modela, prelazi, socket kalibracija i rezultati provera
+nalaze se u [DRIBBLE-1 izveštaju](DRIBBLE_1_IMPLEMENTATION.md). Kamera, mase,
+GLB modeli, socket-i i upright dribble profil nisu menjani ovim slice-om.

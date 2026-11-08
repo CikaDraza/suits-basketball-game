@@ -1,5 +1,6 @@
 import { config, type Legend } from '../data/gameConfig';
 import { dribbleHeight, smoothUnit } from '../simulation/ballHandling';
+import type { DribbleShape } from '../simulation/dribbleProfile';
 
 /** Presentation only: sampled from the authoritative ball phase, never a second clock. */
 export interface DribbleHandSample {
@@ -21,10 +22,15 @@ function segment(t: number, start: number, end: number, v0: number, v1: number) 
   );
 }
 
-export function sampleDribbleHandMotion(legend: Legend, phase: number, out: DribbleHandSample) {
+export function sampleDribbleHandMotion(
+  legend: Legend,
+  phase: number,
+  out: DribbleHandSample,
+  activeShape?: DribbleShape | null,
+) {
   const timing = config.animation.dribbleHand;
-  const shape = config.ballControl[legend];
-  const profile = timing[legend];
+  const shape = activeShape ?? config.ballControl[legend];
+  const profile = activeShape ?? timing[legend];
   const p = ((phase % 1) + 1) % 1;
   const {
     releasePhase: release,

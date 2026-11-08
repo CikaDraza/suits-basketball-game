@@ -69,3 +69,20 @@ test('flush/charge cancellation discards pending taps and held directions', () =
   cancelHeldMovement(gesture);
   assert.equal(stepHeldMovement(gesture, 0, 0, 0.016, min, jabTapWindow), null);
 });
+
+test('a completed press and release sharing one timer timestamp still produces exactly one jab', () => {
+  const tracker = createMovementTracker(min);
+  tracker.update(0, -1, 10);
+  tracker.update(0, 0, 10);
+  const gesture = fresh();
+  assert.equal(
+    stepTimedHeldMovement(gesture, 0, 0, 0, tracker.takeReleases(), min, jabTapWindow),
+    'jab',
+  );
+  assert.equal(gesture.pendingMoveX, 0);
+  assert.equal(gesture.pendingMoveZ, -1);
+  assert.equal(
+    stepTimedHeldMovement(gesture, 0, 0, 0, tracker.takeReleases(), min, jabTapWindow),
+    null,
+  );
+});

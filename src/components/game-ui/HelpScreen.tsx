@@ -29,7 +29,7 @@ const helpSections = [
   {
     title: '06 / LOCAL DUEL',
     description:
-      'Default controls: left stick moves, right stick left/right selects the dribble hand and requests a crossover. Z/C do the same on keyboard. Triangle posts, Square shoots. Change and save offense/defense bindings in timeout → Controls. A second active controller takes over CPU.',
+      'Default controls: left stick moves. Aim the right stick toward the visible hand you want, then return to neutral before another crossover. Z/C select anatomical left/right on keyboard. Triangle posts, Square shoots. Change and save bindings in timeout → Controls. A second active controller takes over CPU.',
   },
 ];
 

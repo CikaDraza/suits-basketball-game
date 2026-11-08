@@ -56,6 +56,7 @@ export function ControlsSettings({ onBack }: { readonly onBack: () => void }) {
   const actions = CONTROL_ACTIONS.filter(
     (action) =>
       !(context === 'defense' && action.startsWith('HAND_')) &&
+      !(action.startsWith('SKILL_') && (device !== 'gamepad' || context === 'defense')) &&
       !(device === 'mobile' && action.startsWith('MOVE_')),
   );
   const currentBinding = (action: ControlAction) =>
@@ -268,8 +269,8 @@ export function ControlsSettings({ onBack }: { readonly onBack: () => void }) {
                       />
                     </label>
                     <p className="controls-note">
-                      Desna palica levo/desno bira ruku i pokreće crossover kada vodiš loptu. Ostale
-                      ose možeš dodeliti prikazanim akcijama.
+                      Smer desne palice bira vidljivu stranu igrača prema kameri. Vrati je u sredinu
+                      pre narednog crossover-a. Četiri smera palice mogu se zasebno mapirati.
                     </p>
                   </>
                 )}

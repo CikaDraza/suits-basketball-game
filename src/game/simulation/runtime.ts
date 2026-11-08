@@ -23,7 +23,6 @@ function createFighter(slot: number, legend: Legend): Fighter {
     vx: 0,
     vz: 0,
     hand: 1,
-    manualHand: false,
     lastQ: -10,
     lastR: -10,
     taps: 0,

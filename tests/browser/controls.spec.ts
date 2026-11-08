@@ -54,6 +54,23 @@ async function advance(page: Page, seconds = 0.3) {
   await expect.poll(async () => (await state(page)).time).toBeGreaterThan(from + seconds);
 }
 
+async function selectVisibleHand(page: Page, hand: 1 | -1) {
+  await page.evaluate((hand) => {
+    const p = window.__TEST__!.getState().player as { x: number; z: number; angle: number };
+    const center = window.__TEST__!.project!([p.x, 1.3, p.z]);
+    const side = window.__TEST__!.project!([
+      p.x + hand * Math.cos(p.angle),
+      1.3,
+      p.z - hand * Math.sin(p.angle),
+    ]);
+    const dx = side.x - center.x,
+      dy = side.y - center.y,
+      length = Math.hypot(dx, dy);
+    window.__mockPad.axes[2] = dx / length;
+    window.__mockPad.axes[3] = dy / length;
+  }, hand);
+}
+
 async function openControls(page: Page) {
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'CONTROLS / KONTROLE' }).click();
@@ -83,17 +100,19 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await advance(page);
     const before = (await state(page)).player as Point & { handling: string };
     expect(before.handling).toBe('hold');
-    await page.evaluate(() => (window.__mockPad.axes[2] = 1));
+    await selectVisibleHand(page, -1);
     await expect
       .poll(async () => ((await state(page)).player as { handling: string }).handling)
       .toBe('dribble');
     await expect
       .poll(async () => ((await state(page)).ballControl as { hand: number }).hand)
       .toBe(-1);
-    await page.evaluate(() => (window.__mockPad.axes[2] = 0));
+    await page.evaluate(() => {
+      window.__mockPad.axes[2] = window.__mockPad.axes[3] = 0;
+    });
     await advance(page, 0.8);
     expect(((await state(page)).ballControl as { hand: number }).hand).toBe(-1);
-    await page.evaluate(() => (window.__mockPad.axes[2] = -1));
+    await selectVisibleHand(page, 1);
     const frames = await page.evaluate(async () => {
       const frames: {
         time: number;
@@ -111,7 +130,9 @@ for (const legend of ['shaq', 'chuck'] as const) {
       }
       return frames;
     });
-    await page.evaluate(() => (window.__mockPad.axes[2] = 0));
+    await page.evaluate(() => {
+      window.__mockPad.axes[2] = window.__mockPad.axes[3] = 0;
+    });
     expect(frames.some((f) => f.crossing)).toBe(true);
     expect(frames.at(-1)!.hand).toBe(1);
     for (let i = 1; i < frames.length; i++) {
@@ -244,6 +265,12 @@ test('offense/defense controls learn keyboard, gamepad and mobile bindings, pers
     .poll(async () => ((await state(page)).ballControl as { hand: number }).hand)
     .toBe(-1);
   await page.evaluate(() => (window.__mockPad.pressed = []));
+  // Ownership transfers at floor contact; the committed crossover continues until
+  // the next top. Commands inside it are deliberately rejected, never replayed.
+  await expect
+    .poll(async () => ((await state(page)).ballControl as { crossing: boolean }).crossing)
+    .toBe(false);
+  await advance(page, 0.18);
   await page.evaluate(() => (window.__mockPad.axes[3] = -1));
   await expect.poll(async () => ((await state(page)).ballControl as { hand: number }).hand).toBe(1);
   await page.evaluate(() => (window.__mockPad.axes[3] = 0));

@@ -230,13 +230,16 @@ for (const cap of [0, 20])
         right: checkHandCycle(right, 'right'),
       };
       await page.screenshot({ path: info.outputPath('right-dribble.png') });
-      // dribble on the move with the right hand, then flip the stick: the real input path
-      // (Duel → p.hand) requests a crossover, and the left hand must take over while walking
+      // Movement alone must retain the right hand. Reverse direction and explicitly
+      // request the left hand through the real input path; the crossover stays continuous.
       await page.evaluate(() => window.__TEST__!.setInput({ moveX: -0.4, moveZ: 0.4 }));
       const moving = await frames(page, 1.4);
-      await page.evaluate(() => window.__TEST__!.setInput({ moveX: 0.4, moveZ: 0.4 }));
+      expect(moving.every((frame) => frame.hand === -1 && !frame.crossing)).toBe(true);
+      await page.evaluate(() =>
+        window.__TEST__!.setInput({ moveX: 0.4, moveZ: 0.4, handLeft: true }),
+      );
       const movingCross = await frames(page, 1.6);
-      await page.evaluate(() => window.__TEST__!.setInput({ moveX: 0, moveZ: 0 }));
+      await page.evaluate(() => window.__TEST__!.setInput({ moveX: 0, moveZ: 0, handLeft: false }));
       for (const f of [...moving, ...movingCross]) {
         const active = f.hands[f.hand === 1 ? 0 : 1];
         expect(active.wristBend).toBeLessThan(65.02);

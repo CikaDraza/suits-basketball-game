@@ -12,6 +12,8 @@ export type TestSeam = {
   /** gait/posture/upper-body diagnostics written by Character each frame */
   getLocomotion?: (slot: 0 | 1) => LocomotionSnapshot | null;
   setHandling?: (slot: 0 | 1, mode: 'hold' | 'dribble', hand: 1 | -1) => void;
+  /** Test fixture only: production facing remains owned by gameplay. */
+  setFacing?: (slot: 0 | 1, angle: number) => void;
   inspectCharacter?: (view: 'front' | 'side' | null) => void;
   version: string;
   mode: 'dev' | 'test' | 'prod';
@@ -24,6 +26,8 @@ export type TestSeam = {
       moveZ: number;
       actionA: boolean;
       actionB: boolean;
+      handLeft: boolean;
+      handRight: boolean;
       pause: boolean;
     }>,
   ) => void;
@@ -78,6 +82,8 @@ function createDefaultTestSeam(): TestSeam {
       }
       if (input.actionA !== undefined) state.setAction('actionA', input.actionA);
       if (input.actionB !== undefined) state.setAction('actionB', input.actionB);
+      if (input.handLeft !== undefined) state.setAction('handLeft', input.handLeft);
+      if (input.handRight !== undefined) state.setAction('handRight', input.handRight);
       if (input.pause !== undefined) state.setAction('pause', input.pause);
     },
 

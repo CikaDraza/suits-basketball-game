@@ -7,6 +7,10 @@ export const CONTROL_ACTIONS = [
   'ACTION_B',
   'HAND_LEFT',
   'HAND_RIGHT',
+  'SKILL_LEFT',
+  'SKILL_RIGHT',
+  'SKILL_UP',
+  'SKILL_DOWN',
   'PAUSE',
 ] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
@@ -38,6 +42,10 @@ export const ACTION_LABELS: Record<ControlContext, Record<ControlAction, string>
     ACTION_B: 'Stav / zagrađivanje / inbound',
     HAND_LEFT: 'Leva ruka · dribling / crossover',
     HAND_RIGHT: 'Desna ruka · dribling / crossover',
+    SKILL_LEFT: 'Desna palica levo · kamera',
+    SKILL_RIGHT: 'Desna palica desno · kamera',
+    SKILL_UP: 'Desna palica gore · kamera',
+    SKILL_DOWN: 'Desna palica dole · kamera',
     PAUSE: 'Pauza / nastavak',
   },
   defense: {
@@ -49,6 +57,10 @@ export const ACTION_LABELS: Record<ControlContext, Record<ControlAction, string>
     ACTION_B: 'Niski stav / kontakt',
     HAND_LEFT: 'Leva ruka (sa loptom)',
     HAND_RIGHT: 'Desna ruka (sa loptom)',
+    SKILL_LEFT: 'Desna palica levo · kamera',
+    SKILL_RIGHT: 'Desna palica desno · kamera',
+    SKILL_UP: 'Desna palica gore · kamera',
+    SKILL_DOWN: 'Desna palica dole · kamera',
     PAUSE: 'Pauza / nastavak',
   },
 };
@@ -69,6 +81,10 @@ export function createDefaultProfile(): ControlProfile {
       ACTION_B: ['KeyQ', 'KeyJ'],
       HAND_LEFT: ['KeyZ'],
       HAND_RIGHT: ['KeyC'],
+      SKILL_LEFT: [],
+      SKILL_RIGHT: [],
+      SKILL_UP: [],
+      SKILL_DOWN: [],
       PAUSE: ['Escape'],
     },
     gamepad: {
@@ -78,8 +94,12 @@ export function createDefaultProfile(): ControlProfile {
       MOVE_DOWN: { kind: 'axis', index: 1, sign: 1 },
       ACTION_A: { kind: 'button', index: 2 },
       ACTION_B: { kind: 'button', index: 3 },
-      HAND_LEFT: { kind: 'axis', index: 2, sign: -1 },
-      HAND_RIGHT: { kind: 'axis', index: 2, sign: 1 },
+      HAND_LEFT: null,
+      HAND_RIGHT: null,
+      SKILL_LEFT: { kind: 'axis', index: 2, sign: -1 },
+      SKILL_RIGHT: { kind: 'axis', index: 2, sign: 1 },
+      SKILL_UP: { kind: 'axis', index: 3, sign: -1 },
+      SKILL_DOWN: { kind: 'axis', index: 3, sign: 1 },
       PAUSE: { kind: 'button', index: 9 },
     },
     mobile: { square: 'ACTION_A', triangle: 'ACTION_B', circle: 'HAND_LEFT', cross: 'HAND_RIGHT' },
@@ -119,6 +139,19 @@ export function restoreProfile(value: unknown): ControlProfile {
   for (const context of ['offense', 'defense'] as const) {
     const data = saved[context];
     if (!data || typeof data !== 'object') continue;
+    const hadSkillMap = ['SKILL_LEFT', 'SKILL_RIGHT', 'SKILL_UP', 'SKILL_DOWN'].some((action) =>
+      Object.hasOwn(data.gamepad ?? {}, action),
+    );
+    const legacyLeft = data.gamepad?.HAND_LEFT;
+    const legacyRight = data.gamepad?.HAND_RIGHT;
+    const legacyDefaultHands =
+      !hadSkillMap &&
+      legacyLeft?.kind === 'axis' &&
+      legacyLeft.index === 2 &&
+      legacyLeft.sign === -1 &&
+      legacyRight?.kind === 'axis' &&
+      legacyRight.index === 2 &&
+      legacyRight.sign === 1;
     for (const action of CONTROL_ACTIONS) {
       const keys = data.keyboard?.[action];
       if (
@@ -129,8 +162,30 @@ export function restoreProfile(value: unknown): ControlProfile {
       )
         out[context].keyboard[action] = keys;
       const pad = data.gamepad?.[action];
-      if (pad === null || isPadBinding(pad)) out[context].gamepad[action] = pad;
+      if (
+        !(legacyDefaultHands && action.startsWith('HAND_')) &&
+        (pad === null || isPadBinding(pad))
+      )
+        out[context].gamepad[action] = pad;
     }
+    // Preserve an old custom anatomical binding without also firing the new
+    // default skill direction on that same physical axis/button.
+    if (!hadSkillMap && !legacyDefaultHands)
+      for (const hand of ['HAND_LEFT', 'HAND_RIGHT'] as const) {
+        const binding = out[context].gamepad[hand];
+        for (const skill of ['SKILL_LEFT', 'SKILL_RIGHT', 'SKILL_UP', 'SKILL_DOWN'] as const) {
+          const candidate = out[context].gamepad[skill];
+          if (
+            binding &&
+            candidate &&
+            binding.kind === candidate.kind &&
+            binding.index === candidate.index &&
+            (binding.kind === 'button' ||
+              (candidate.kind === 'axis' && binding.sign === candidate.sign))
+          )
+            out[context].gamepad[skill] = null;
+        }
+      }
     for (const slot of TOUCH_SLOTS) {
       const action = data.mobile?.[slot];
       if (action === null || CONTROL_ACTIONS.includes(action as ControlAction))

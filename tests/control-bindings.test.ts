@@ -34,17 +34,65 @@ beforeEach(() => {
   useControlSettingsStore.setState({ profile: createDefaultProfile(), capturing: false });
 });
 
-test('the right stick selects either dribble hand without moving the left stick', () => {
+test('the right stick provides an independent camera-relative 2D skill vector', () => {
   const profile = createDefaultProfile();
   const left = readGamepadInput(pad([0, 0, -1, 0]), profile.offense, profile.deadzone);
-  assert.equal(left.hand, 1);
+  assert.equal(left.hand, 0);
+  assert.deepEqual(left.skill, { x: -1, z: 0 });
   assert.equal(left.x, 0);
   assert.equal(left.z, 0);
   const right = readGamepadInput(pad([0, 0, 1, 0]), profile.offense, profile.deadzone);
-  assert.equal(right.hand, -1);
+  assert.equal(right.hand, 0);
+  assert.deepEqual(right.skill, { x: 1, z: 0 });
   assert.equal(right.q, false);
   assert.equal(right.r, false);
   assert.equal(readGamepadInput(pad([0, 0, 0.12, 0]), profile.offense, profile.deadzone).hand, 0);
+  assert.deepEqual(
+    readGamepadInput(pad([0, 0, 0.12, 0]), profile.offense, profile.deadzone).skill,
+    { x: 0, z: 0 },
+  );
+  assert.deepEqual(readGamepadInput(pad([0, 0, 0, -1]), profile.offense, profile.deadzone).skill, {
+    x: 0,
+    z: 1,
+  });
+  assert.deepEqual(readGamepadInput(pad([0, 0, 0, 1]), profile.offense, profile.deadzone).skill, {
+    x: 0,
+    z: -1,
+  });
+});
+
+test('skill axes use a radial deadzone and preserve cardinal/diagonal direction', () => {
+  const profile = createDefaultProfile();
+  const diagonal = readGamepadInput(pad([0, 0, 1, -1]), profile.offense, profile.deadzone).skill;
+  assert.ok(Math.abs(diagonal.x - Math.SQRT1_2) < 1e-12);
+  assert.ok(Math.abs(diagonal.z - Math.SQRT1_2) < 1e-12);
+  const below = readGamepadInput(pad([0, 0, 0.12, -0.12]), profile.offense, profile.deadzone).skill;
+  assert.deepEqual(below, { x: 0, z: 0 });
+  const radial = readGamepadInput(
+    pad([0, 0, 0.15, -0.15]),
+    profile.offense,
+    profile.deadzone,
+  ).skill;
+  assert.ok(radial.x > 0 && radial.z > 0, 'diagonal radial magnitude is above deadzone');
+  assert.ok(Math.abs(radial.x - radial.z) < 1e-12);
+  assert.ok(
+    Math.abs(Math.hypot(radial.x, radial.z) - (Math.hypot(0.15, 0.15) - 0.18) / 0.82) < 1e-12,
+  );
+});
+
+test('the full skill pair is remappable while anatomical hand buttons stay explicit', () => {
+  const profile = createDefaultProfile();
+  profile.offense.gamepad.SKILL_LEFT = { kind: 'axis', index: 5, sign: -1 };
+  profile.offense.gamepad.SKILL_RIGHT = { kind: 'axis', index: 5, sign: 1 };
+  profile.offense.gamepad.SKILL_UP = { kind: 'axis', index: 4, sign: -1 };
+  profile.offense.gamepad.SKILL_DOWN = { kind: 'axis', index: 4, sign: 1 };
+  profile.offense.gamepad.HAND_LEFT = { kind: 'button', index: 10 };
+  const mapped = readGamepadInput(pad([0, 0, 1, -1, 1, -1], [10]), profile.offense, 0.18);
+  assert.equal(mapped.hand, 1);
+  assert.equal(mapped.x, 0);
+  assert.equal(mapped.z, 0);
+  assert.ok(Math.abs(mapped.skill.x + Math.SQRT1_2) < 1e-12);
+  assert.ok(Math.abs(mapped.skill.z + Math.SQRT1_2) < 1e-12);
 });
 
 test('mapped gamepad buttons and axis directions use the learned binding, not a hard-coded face index', () => {
@@ -189,7 +237,8 @@ test('remapping swaps collisions and leaves the other offense/defense profile in
   settings.bindPad('offense', 'ACTION_A', { kind: 'axis', index: 2, sign: 1 });
   const pads = useControlSettingsStore.getState().profile.offense.gamepad;
   assert.deepEqual(pads.ACTION_A, { kind: 'axis', index: 2, sign: 1 });
-  assert.deepEqual(pads.HAND_RIGHT, { kind: 'button', index: 2 });
+  assert.deepEqual(pads.SKILL_RIGHT, { kind: 'button', index: 2 });
+  assert.equal(pads.HAND_RIGHT, null);
   settings.bindTouch('offense', 'ACTION_A', 'triangle');
   const mobile = useControlSettingsStore.getState().profile.offense.mobile;
   assert.equal(mobile.triangle, 'ACTION_A');

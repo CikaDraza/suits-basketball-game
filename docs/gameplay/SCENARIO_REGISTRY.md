@@ -106,3 +106,21 @@ scenario ukupnog kretanja ostaje `Not Verified` dok su Chuck gait/sampling
 regresije otvorene. SC-003/004 imaju proverenu postojeću predaju ruke; buduća S06
 fazna tehnika i reakcija odbrane nisu time implementirane. Prihvatanje slice-a
 ostaje odvojeno od statusa pojedinačnog scenarija i vodi se u tracker-u.
+
+## Korektivni slice DRIBBLE-1 (2026-11-08)
+
+Osnova: `main` `e0e9cc5` (PR #1). Merila dolaze iz
+[DRIBBLE-1 specifikacije](DRIBBLE_1_SPEC.md), a stvarni rezultat i ograničenja iz
+[implementacionog izveštaja](DRIBBLE_1_IMPLEMENTATION.md). Prethodni S00/S01
+rezultati iznad ostaju istorijski zapisi.
+
+| Scenario | Obuhvat i dokaz                                                                                                                                            | Status             |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| SC-D1    | Osam orijentacija, kardinalni/dijagonalni smerovi, kamera i anatomska ruka; `skill-gesture.test.ts`, `browser/dribble-1.spec.ts`                           | Automated Verified |
+| SC-D2    | Crossover u mestu bez pomeranja/rotacije tela; isti bounce sat, otpuštanje/prihvat; `browser/dribble-1.spec.ts`                                            | Automated Verified |
+| SC-D3    | Crossover pa prodor, ista izabrana ruka za oba modela i obe strane; `browser/dribble-1.spec.ts`                                                            | Automated Verified |
+| SC-D4    | Kretanje i promene smera ne traže crossover; `browser/dribble-1.spec.ts`, postojeći `slice2.spec.ts`                                                       | Automated Verified |
+| SC-D5    | Zaštićeni post-up, izmerena širina mreže/dohvat, vidljiv rad ruke i kontakt; `post-dribble.test.ts`, `browser/dribble-1.spec.ts`                           | Automated Verified |
+| SC-D6    | Protivnik menja stranu: prostor se prilagođava, ruka ostaje; `post-dribble.test.ts`, `browser/dribble-1.spec.ts`                                           | Automated Verified |
+| SC-D7    | Kratka ivica, držanje, neutralno stanje, pause/reset/disconnect i odbijanje tokom crossover-a; `dribble-skill-buffer.test.ts`, `browser/dribble-1.spec.ts` | Automated Verified |
+| SC-D8    | Shaq/Chuck stvarni GLB, 20/30/60/120 Hz rig probe i browser kosti/socket-i; `dribble-contact.test.ts`, `post-dribble.test.ts`, browser artefakti           | Automated Verified |

@@ -1,5 +1,13 @@
 # Gameplay Foundation v2 — autoritativni status
 
+Aktuelni korektivni slice: **DRIBBLE-1A/B/C — Automated Verified**, na osnovi PR #1 /
+`main` `e0e9cc5`, grana `feat/dribble-1` (2026-11-08). Vodi se kroz
+[specifikaciju](DRIBBLE_1_SPEC.md) i [izveštaj](DRIBBLE_1_IMPLEMENTATION.md).
+S02/S04/napredni S06 se ne otvaraju ovim zahvatom; odobrene buduće gamepad mape
+su zapisane u izveštaju, uz očuvanje sadašnjih akcija. Završno: check 106/106,
+build PASS, pun browser paket 48/48. Vizuelni dokazi i granice navedeni su u
+izveštaju; `Accepted` ostaje pending do korisničkog pregleda. Nema automatskog merge-a.
+
 Datum provere: 2026-11-07. Referentni `main`:
 `465f6e080f60bd6060f9f02b52e5f6dcec9e38d4`.
 

@@ -19,7 +19,7 @@ import type { PlayerSlot } from '../simulation/types';
 import { Character } from './Character';
 import { InboundCountdown } from './InboundCountdown';
 import { FootContactDebug } from './FootContactDebug';
-import { duel, bodies, tickDuel } from './Duel';
+import { duel, bodies, tickDuel, sampleDuelSkillInput } from './Duel';
 import { afterDuelPhysicsStep } from './Duel';
 import { PLAYER_COLLISION_GROUPS } from '../physics/ballCollision';
 
@@ -108,6 +108,7 @@ export function DuelArena() {
   const rings = useRef<Group>(null);
   const burst = useRef<Mesh>(null);
   useDuelTestSeam();
+  useFrame(sampleDuelSkillInput, -110);
   useBeforePhysicsStep(() => tickDuel(1 / config.physics.timestep));
   useAfterPhysicsStep(afterDuelPhysicsStep);
 

@@ -56,6 +56,17 @@ export function stepTimedHeldMovement(
   tapWindow: number,
 ) {
   for (const release of releases) {
+    // Browser timer precision can assign the same timestamp to a complete tap.
+    // The release event proves a real gesture even when its measured duration is zero.
+    if (
+      release.duration === 0 &&
+      state.dirHeld === 0 &&
+      Math.hypot(release.x, release.z) > minMove
+    ) {
+      state.pendingMoveX = release.x;
+      state.pendingMoveZ = release.z;
+      return 'jab';
+    }
     const commit = stepHeldMovement(
       state,
       release.x,

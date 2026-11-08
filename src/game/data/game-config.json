@@ -338,6 +338,33 @@
     "crossoverForward": 0.18,
     "turnRate": 14,
     "armBlendRate": 24,
+    "postDribble": {
+      "blendRate": 4,
+      "pressureRange": 1.8,
+      "fullPressureDistance": 0.8,
+      "pressureSide": 0.015,
+      "pressureForward": 0.025,
+      "shaq": {
+        "hipSide": 0.57,
+        "dribbleForward": 0.42,
+        "dribbleTop": 1.13,
+        "drop": 0.23,
+        "retractSide": 0.14,
+        "retractForward": 0.06,
+        "poleSide": 0.08,
+        "poleForward": -1.2
+      },
+      "chuck": {
+        "hipSide": 0.53,
+        "dribbleForward": 0.41,
+        "dribbleTop": 1.05,
+        "drop": 0.21,
+        "retractSide": 0.12,
+        "retractForward": 0.05,
+        "poleSide": 0.08,
+        "poleForward": -1.2
+      }
+    },
     "shaq": {
       "holdHeight": 1.48,
       "holdForward": 0.32,

@@ -1,5 +1,5 @@
-import raw from './game-config.json';
-import levelRaw from './level-1.json';
+import raw from './game-config.json' with { type: 'json' };
+import levelRaw from './level-1.json' with { type: 'json' };
 const [px, , pz] = raw.camera.position;
 const [tx, , tz] = raw.camera.target;
 

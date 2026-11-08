@@ -1,6 +1,7 @@
 import { config, type Legend } from '../data/gameConfig';
 import { clamp } from '../utils/math';
 import type { PassPoint } from './tacticalPass';
+import { createDribbleShape, writeDribbleShape, type DribbleShape } from './dribbleProfile';
 
 export interface BallHandlingState {
   owner: number;
@@ -17,6 +18,10 @@ export interface BallHandlingState {
   floorEvent: boolean;
   floorContacts: number;
   lastFloorY: number | null;
+  postBlend: number;
+  pressureSide: number;
+  pressureForward: number;
+  shape: DribbleShape | null;
 }
 export function createBallHandlingState(): BallHandlingState {
   return {
@@ -34,6 +39,10 @@ export function createBallHandlingState(): BallHandlingState {
     floorEvent: false,
     floorContacts: 0,
     lastFloorY: null,
+    postBlend: 0,
+    pressureSide: 0,
+    pressureForward: 0,
+    shape: null,
   };
 }
 export function smoothUnit(t: number) {
@@ -102,11 +111,13 @@ export function stepBallHandling(
   charge: number,
   current: PassPoint,
   dt: number,
+  defender?: Pick<PassPoint, 'x' | 'z'>,
 ): PassPoint {
   const cfg = config.ballControl,
     shape = cfg[legend];
   state.floorEvent = false;
   if (state.owner !== slot || state.mode !== mode) {
+    if (state.owner !== slot) state.postBlend = 0;
     state.owner = slot;
     state.mode = mode;
     state.entryTime = 0;
@@ -116,7 +127,49 @@ export function stepBallHandling(
       state.hand = requestedHand;
       state.crossing = false;
     }
+    state.pressureSide = state.pressureForward = 0;
+    state.shape ??= createDribbleShape(legend);
   }
+  // The physical player remains authoritative; this only changes the controlled
+  // ball's reachable spacing. Pressure can expose a hand, never select another.
+  const blendK = 1 - Math.exp(-cfg.postDribble.blendRate * dt);
+  state.postBlend += (Number(post) - state.postBlend) * blendK;
+  let pressureSide = 0,
+    pressureForward = 0;
+  if (defender && post) {
+    const dx = defender.x - body.x,
+      dz = defender.z - body.z,
+      distance = Math.hypot(dx, dz);
+    const pressure = clamp(
+      (cfg.postDribble.pressureRange - distance) /
+        (cfg.postDribble.pressureRange - cfg.postDribble.fullPressureDistance),
+      0,
+      1,
+    );
+    if (distance > 1e-5) {
+      const localX = dx * Math.cos(angle) - dz * Math.sin(angle),
+        localZ = dx * Math.sin(angle) + dz * Math.cos(angle);
+      const postShape = cfg.postDribble[legend];
+      const ballDx = localX - state.hand * postShape.hipSide,
+        ballDz = localZ - postShape.dribbleForward,
+        ballDistance = Math.hypot(ballDx, ballDz);
+      if (ballDistance > 1e-5) {
+        pressureSide =
+          (-ballDx / ballDistance) * state.hand * cfg.postDribble.pressureSide * pressure;
+        pressureForward = (-ballDz / ballDistance) * cfg.postDribble.pressureForward * pressure;
+      }
+    }
+  }
+  state.pressureSide += (pressureSide - state.pressureSide) * blendK;
+  state.pressureForward += (pressureForward - state.pressureForward) * blendK;
+  state.shape ??= createDribbleShape(legend);
+  writeDribbleShape(
+    state.shape,
+    legend,
+    state.postBlend,
+    state.pressureSide,
+    state.pressureForward,
+  );
   let x = 0,
     y = shape.holdHeight - (post ? shape.postDrop : 0),
     z = shape.holdForward;
@@ -139,10 +192,10 @@ export function stepBallHandling(
     const side = state.crossing
       ? state.fromHand + (state.toHand - state.fromHand) * across
       : state.hand;
-    x = shape.hipSide * side;
-    y = dribbleHeight(state.phase, shape.dribbleTop, config.ball.radius);
+    x = state.shape.hipSide * side;
+    y = dribbleHeight(state.phase, state.shape.dribbleTop, config.ball.radius);
     z =
-      shape.dribbleForward +
+      state.shape.dribbleForward +
       (state.crossing ? Math.sin(state.phase * Math.PI) * cfg.crossoverForward : 0);
     if (state.crossing && previous < 0.5 && state.phase >= 0.5) state.hand = state.toHand;
   } else if (charge > 0) {

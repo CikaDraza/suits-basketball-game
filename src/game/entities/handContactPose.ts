@@ -63,9 +63,9 @@ export function createHandContactPose(model: Object3D, legend: Legend) {
           (Number(active) - weights[i]) * (1 - Math.exp(-config.ballControl.armBlendRate * dt));
         if (active) {
           if (dribbling && controlled) {
-            const shape = config.ballControl[legend];
-            const profile = config.animation.dribbleHand[legend];
-            sampleDribbleHandMotion(legend, state.phase, motion);
+            const shape = state.shape ?? config.ballControl[legend];
+            const profile = state.shape ?? config.animation.dribbleHand[legend];
+            sampleDribbleHandMotion(legend, state.phase, motion, state.shape);
             target
               .copy(floor)
               .addScaledVector(left, sign * shape.hipSide)
@@ -87,8 +87,8 @@ export function createHandContactPose(model: Object3D, legend: Legend) {
             // the elbow toward shoulder height, hiding forearm work.
             pole
               .copy(left)
-              .multiplyScalar(sign * 0.08)
-              .addScaledVector(forward, -1.2);
+              .multiplyScalar(sign * (state.shape?.poleSide ?? 0.08))
+              .addScaledVector(forward, state.shape?.poleForward ?? -1.2);
             pole.y = -1;
           } else {
             normal

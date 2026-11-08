@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Vector3 } from 'three';
 import { config, level } from '../data/gameConfig';
-import { duel, bodies, resetDuel } from '../entities/Duel';
+import { duel, bodies, resetDuel, skillInputs } from '../entities/Duel';
 import { useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
 import { useHarnessStore } from '../state/harnessStore';
@@ -34,6 +34,10 @@ export function useDuelTestSeam(): void {
         if (mode === 'hold') useInputStore.getState().flush();
         duel.players[slot].handling = mode;
         duel.players[slot].hand = hand;
+      },
+      setFacing: (slot, angle) => {
+        if (useHarnessStore.getState().testMode && Number.isFinite(angle))
+          duel.players[slot].angle = angle;
       },
       requestInboundPass: (receiver = 0) => useGameStore.getState().requestInboundPass(receiver),
       getCharacterPose: (slot) => readCharacterPose(scene, slot, bodies.players[slot]),
@@ -67,6 +71,7 @@ export function useDuelTestSeam(): void {
             : { ...duel.ball },
         },
         ballControl: structuredClone(duel.ballControl),
+        skillInput: skillInputs.map((input) => structuredClone(input.debug)),
         inboundPass: duel.inboundPass ? structuredClone(duel.inboundPass) : null,
         passes: duel.passes,
         chestPasses: duel.chestPasses,

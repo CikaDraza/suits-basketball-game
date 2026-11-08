@@ -48,8 +48,8 @@ export function readGamepadInput(
   deadzone: number,
   neutralAxes?: readonly number[],
 ) {
-  const value = (action: keyof ContextBindings['gamepad']) =>
-    pad ? padValue(pad, map.gamepad[action], deadzone, neutralAxes) : 0;
+  const value = (action: keyof ContextBindings['gamepad'], zone = deadzone) =>
+    pad ? padValue(pad, map.gamepad[action], zone, neutralAxes) : 0;
   let x = value('MOVE_RIGHT') - value('MOVE_LEFT'),
     z = value('MOVE_UP') - value('MOVE_DOWN');
   const length = Math.hypot(x, z);
@@ -59,12 +59,25 @@ export function readGamepadInput(
   }
   const left = value('HAND_LEFT'),
     right = value('HAND_RIGHT');
+  const rawSkillX = value('SKILL_RIGHT', 0) - value('SKILL_LEFT', 0),
+    rawSkillZ = value('SKILL_UP', 0) - value('SKILL_DOWN', 0);
+  const skillLength = Math.hypot(rawSkillX, rawSkillZ);
+  const skillMagnitude =
+    skillLength <= deadzone ? 0 : (Math.min(1, skillLength) - deadzone) / (1 - deadzone);
+  const skill =
+    skillLength > 0
+      ? {
+          x: (rawSkillX / skillLength) * skillMagnitude,
+          z: (rawSkillZ / skillLength) * skillMagnitude,
+        }
+      : { x: 0, z: 0 };
   return {
     x,
     z,
     q: value('ACTION_B') > 0.5,
     r: value('ACTION_A') > 0.5,
     hand: left > 0.55 && left > right ? 1 : right > 0.55 ? -1 : 0,
+    skill,
     pause: value('PAUSE') > 0.5,
   };
 }
