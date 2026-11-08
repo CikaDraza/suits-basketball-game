@@ -62,7 +62,7 @@ export function readCharacterPose(
     if (!(object instanceof Bone)) return;
     if (/Hips$/.test(object.name)) hips = object;
     const name = object.name.replace(/^mixamorig:?/, '');
-    if (/^(Left|Right)(Hand|ForeArm|Arm|Leg|Foot)$/.test(name)) {
+    if (/^(Left|Right)(Hand|ForeArm|Arm|UpLeg|Leg|Foot)$/.test(name)) {
       object.getWorldPosition(point);
       joints[name] = { x: point.x, y: point.y, z: point.z };
     }

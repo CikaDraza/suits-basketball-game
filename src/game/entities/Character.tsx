@@ -31,8 +31,9 @@ import { createLegRig } from './legRig';
 import { createGaitState, stepGait, type GaitTuning } from './gait';
 import { deriveStates, type CallForPassFallback } from './posture';
 import { locomotionDebug } from './locomotionDebug';
+import { createImportedWalk, isolateWalkingCharacter } from './importedWalk';
 
-Object.values(MODEL_PATHS).forEach((p) => useGLTF.preload(p));
+Object.values(MODEL_PATHS).forEach((path) => useGLTF.preload(path));
 
 const BONES = [
   'Hips',
@@ -219,9 +220,13 @@ interface CharacterProps {
 
 /** Rigged GLB characters. Each clone owns its skeleton; geometry/materials belong to the loader cache. */
 export function Character({ index, legend }: CharacterProps) {
-  const gltf = useGLTF(MODEL_PATHS[legend]);
-  const { model, rig, face, skeletons, groundFeet, legRig, hands } = useMemo(() => {
+  const hasImportedWalk = legend === 'shaq';
+  const modelPath = MODEL_PATHS[legend];
+  const gltf = useGLTF(modelPath);
+  const { model, rig, face, skeletons, groundFeet, legRig, hands, walk } = useMemo(() => {
     const model = cloneSkinned(gltf.scene);
+    if (hasImportedWalk) isolateWalkingCharacter(model);
+    model.userData.modelPath = modelPath;
     const skeletons = new Set<Skeleton>();
     model.traverse((object) => {
       if (object instanceof Mesh) object.frustumCulled = false;
@@ -233,6 +238,7 @@ export function Character({ index, legend }: CharacterProps) {
       rig,
       face: createFaceController(model),
       skeletons,
+      walk: hasImportedWalk ? createImportedWalk(model, gltf.animations) : null,
       // measured in the detached bind pose, before any posing
       legRig: createLegRig(model, rig.bones),
       hands: createHandContactPose(model, legend),
@@ -241,9 +247,10 @@ export function Character({ index, legend }: CharacterProps) {
         rig.bones.Hips,
         rig.bones.LeftFoot,
         rig.bones.RightFoot,
+        { skinnedContacts: hasImportedWalk },
       ),
     };
-  }, [gltf.scene, legend]);
+  }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath]);
   const shadowTexture = useMemo(createShadowTexture, []);
   useEffect(() => () => shadowTexture.dispose(), [shadowTexture]);
   useEffect(
@@ -477,6 +484,27 @@ export function Character({ index, legend }: CharacterProps) {
     const mv = st.moveWeight * clamp(gait.speed / config.player[legend].speed, 0, 1);
     const along = gait.speed > 1e-3 ? gait.forwardSpeed / gait.speed : 0; // +1 fwd, −1 back
 
+    walk?.step(
+      frameDt,
+      travelX * fx + travelZ * fz,
+      grounded &&
+        gait.moving &&
+        gait.locomotion === 'forward' &&
+        states.posture === 'upright' &&
+        p.mode === 'idle' &&
+        p.charge === 0 &&
+        p.jab === 0 &&
+        p.bite === 0 &&
+        !pushing,
+      reset ||
+        !grounded ||
+        p.mode !== 'idle' ||
+        states.posture !== 'upright' ||
+        p.charge > 0 ||
+        p.jab > 0 ||
+        p.bite > 0,
+    );
+    walk?.resetPose();
     hands.reset();
     // ---------- 3. upper-body + spine target pose (rebuilt from REST every frame) ----------
     Object.assign(target, REST);
@@ -854,6 +882,13 @@ export function Character({ index, legend }: CharacterProps) {
       // fallback for rigs without a measurable leg chain
       groundFeet(groundPoint.y);
     }
+    if (walk && walk.debug.weight > 0) {
+      walk.apply(states.upper === 'relaxed');
+      model.updateWorldMatrix(true, true);
+      // The imported FK legs own the moving pose; soles stay on the existing court plane.
+      // The capsule remains authoritative. Hand IK below sees the final grounded torso.
+      groundFeet?.(groundPoint.y);
+    }
     locomotionDebug[index] = {
       locomotion: gait.locomotion,
       posture: states.posture,
@@ -870,6 +905,7 @@ export function Character({ index, legend }: CharacterProps) {
       reachDrop,
       stride,
       grounded: grounded && st.groundReady,
+      ...(walk ? { importedWalk: { ...walk.debug } } : {}),
       feet: gait.feet.map((f, i) => ({
         planted: !f.swinging,
         target: { x: f.target.x, y: f.target.y, z: f.target.z },

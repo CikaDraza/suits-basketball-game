@@ -51,3 +51,6 @@ aut pripada protivniku poslednjeg igrača koji je dodirnuo loptu.
 [Korekcija driblinga prema povratnoj informaciji: opružanje, laktovi i crossover](docs/gameplay/DRIBBLE_FEEDBACK_FIX.md).
 
 [DRIBBLE-1: smer palice, trajni izbor ruke i zaštićeni post-up](docs/gameplay/DRIBBLE_1_IMPLEMENTATION.md).
+
+Shaq sada podrazumevano koristi odobreni walking model; razvojni URL parametar
+više nije potreban. [Arhiva modela, production/staging i provere release-a](docs/release-and-staging.md).

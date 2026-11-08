@@ -13,6 +13,12 @@ export const MODEL_PATHS: Readonly<Record<Legend, string>> = {
   chuck: 'models/charles_barkley.glb',
 };
 
+/** Historical inputs; gameplay loads only MODEL_PATHS. */
+export const MODEL_ARCHIVES = {
+  shaqOriginal: 'models/archives/shaquille_oneal.org.glb',
+  shaqWalkingSource: 'models/archives/shaquille_oneal_walking_test.glb',
+} as const;
+
 export const PORTRAIT_PATHS: Readonly<Record<Legend, string>> = {
   shaq: 'images/shaq-portrait.png',
   chuck: 'images/chuck-portrait.png',
@@ -27,7 +33,7 @@ export const ASSET_MANIFEST: readonly AssetEntry[] = [
     id: 'shaq-model',
     path: MODEL_PATHS.shaq,
     type: 'model',
-    tags: ['character', 'rigged', 'mixamo', 'face-morphs'],
+    tags: ['character', 'rigged', 'mixamo', 'face-morphs', 'walking'],
   },
   {
     id: 'chuck-model',

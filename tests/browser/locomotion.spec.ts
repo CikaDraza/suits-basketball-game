@@ -83,17 +83,40 @@ function checkFrames(label: string, frames: Frame[], report: Record<string, unkn
   let slide = 0,
     travel = 0,
     forwardSwingWhileBack = 0,
-    hitchReplants = 0;
+    hitchReplants = 0,
+    importedFrames = 0;
   const worst: { slide: number; t: number; body: number; speed: number; moving: boolean }[] = [];
   for (let k = 0; k < frames.length; k++) {
     const f = frames[k];
     const soles = [f.pose.leftSoleY, f.pose.rightSoleY];
+    const imported = (f.gait.importedWalk?.weight ?? 0) > 0;
+    if (imported) {
+      importedFrames++;
+      expect(f.gait.posture, `${label}: walk overrides a protected stance`).toBe('upright');
+      expect(f.mode, `${label}: walk overrides a special action`).toBe('idle');
+      const first = frames[0].pose.joints;
+      for (const side of ['Left', 'Right']) {
+        const distance = (
+          a: { x: number; y: number; z: number },
+          b: { x: number; y: number; z: number },
+        ) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+        for (const [a, b] of [
+          [`${side}UpLeg`, `${side}Leg`],
+          [`${side}Leg`, `${side}Foot`],
+        ])
+          expect(
+            Math.abs(distance(f.pose.joints[a], f.pose.joints[b]) - distance(first[a], first[b])),
+            `${label}: imported walk stretches a leg`,
+          ).toBeLessThan(0.00001);
+      }
+    }
     for (const sole of soles)
       expect(sole, `${label}: sole below the court`).toBeGreaterThan(SOLE_FLOOR);
     if (f.gait.grounded) {
       expect(Math.min(...soles), `${label}: both feet off the court`).toBeLessThan(SOLE_CONTACT);
       soles.forEach((sole, i) => {
-        if (sole > SOLE_CONTACT)
+        // Imported FK owns the moving feet; legacy anchor flags describe the base gait.
+        if (sole > SOLE_CONTACT && !imported)
           expect(f.gait.feet[i].planted, `${label}: planted foot floating`).toBe(false);
       });
     }
@@ -114,7 +137,13 @@ function checkFrames(label: string, frames: Frame[], report: Record<string, unkn
         q = f.pose.joints[joint];
       const step = Math.hypot(q.x - p.x, q.z - p.z);
       // a re-plant (teleport / long frame hitch) is a deliberate discontinuity, not a slide
-      if (a.gait.feet[i].planted && f.gait.feet[i].planted && a.gait.resets === f.gait.resets) {
+      if (
+        !imported &&
+        !a.gait.importedWalk?.weight &&
+        a.gait.feet[i].planted &&
+        f.gait.feet[i].planted &&
+        a.gait.resets === f.gait.resets
+      ) {
         slide += step;
         if (step > 0.01)
           worst.push({ slide: step, t: f.t, body, speed: f.gait.speed, moving: f.gait.moving });
@@ -133,6 +162,7 @@ function checkFrames(label: string, frames: Frame[], report: Record<string, unkn
     forwardSwingWhileBack,
     replants,
     hitchReplants,
+    importedFrames,
   };
   expect(replants - hitchReplants, `${label}: unexplained foot replants`).toBeLessThanOrEqual(1);
   // stance feet are world anchored: slide is a small fraction of the distance travelled

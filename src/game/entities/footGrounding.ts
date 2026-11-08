@@ -42,18 +42,22 @@ export function createFootGrounding(
   hips: Bone | undefined,
   left: Bone | undefined,
   right: Bone | undefined,
+  options: { readonly skinnedContacts?: boolean } = {},
 ): ((floorY: number) => void) | undefined {
   if (!hips || !left || !right) return undefined;
   model.updateMatrixWorld(true);
   const feet = { left, right };
-  const samples: Record<FootSide, Vector3[]> = { left: [], right: [] };
+  const samples: Record<FootSide, { mesh: SkinnedMesh; vertex: number; point: Vector3 }[]> = {
+    left: [],
+    right: [],
+  };
   const minimum: Record<FootSide, number> = { left: Infinity, right: Infinity };
   const point = new Vector3();
 
   forEachFootVertex(model, (mesh, vertex, side) => {
     mesh.getVertexPosition(vertex, point).applyMatrix4(mesh.matrixWorld);
     minimum[side] = Math.min(minimum[side], point.y);
-    samples[side].push(point.clone());
+    samples[side].push({ mesh, vertex, point: point.clone() });
   });
 
   const inverse = new Matrix4();
@@ -63,8 +67,8 @@ export function createFootGrounding(
       bone: feet[side],
       // Retain the sole surface, including heel and toe, rather than the ankle joint.
       points: samples[side]
-        .filter((sample) => sample.y <= minimum[side] + 0.025)
-        .map((sample) => sample.applyMatrix4(inverse)),
+        .filter((sample) => sample.point.y <= minimum[side] + 0.025)
+        .map((sample) => ({ ...sample, point: sample.point.applyMatrix4(inverse) })),
     };
   });
   if (contacts.some((contact) => contact.points.length === 0)) return undefined;
@@ -75,7 +79,12 @@ export function createFootGrounding(
     for (const contact of contacts) {
       contact.bone.updateWorldMatrix(true, false);
       for (const sample of contact.points) {
-        soleY = Math.min(soleY, point.copy(sample).applyMatrix4(contact.bone.matrixWorld).y);
+        if (options.skinnedContacts) {
+          // Toe bones can rotate independently of the ankle in imported clips.
+          // Skin the cached sole band; an ankle-only transform can float both shoes.
+          sample.mesh.getVertexPosition(sample.vertex, point).applyMatrix4(sample.mesh.matrixWorld);
+        } else point.copy(sample.point).applyMatrix4(contact.bone.matrixWorld);
+        soleY = Math.min(soleY, point.y);
       }
     }
     // A world-space vertical correction also works beneath scaled/rotated GLB roots.

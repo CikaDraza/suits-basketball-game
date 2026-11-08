@@ -11,7 +11,9 @@ import {
   Uint16BufferAttribute,
   Vector3,
 } from 'three';
-import { createFootGrounding } from '../src/game/entities/footGrounding';
+import { createFootGrounding, forEachFootVertex } from '../src/game/entities/footGrounding';
+import { createImportedWalk } from '../src/game/entities/importedWalk';
+import { loadCharacter } from './helpers/loadCharacter';
 
 test('grounding corrects deformed soles under a scaled, rotated parent without moving the root or geometry', (context) => {
   const model = new Group();
@@ -82,4 +84,48 @@ test('grounding corrects deformed soles under a scaled, rotated parent without m
   );
   assert.deepEqual(model.matrix.toArray(), rootMatrix);
   assert.deepEqual(Array.from(geometry.getAttribute('position').array), originalGeometry);
+});
+
+test('animated toe contacts keep the real walking Shaq on the floor through a full cycle under a scaled parent', async (context) => {
+  const asset = await loadCharacter('shaq');
+  context.after(asset.dispose);
+  const parent = new Group();
+  parent.position.set(2, 0.2, -1);
+  parent.rotation.y = 0.4;
+  parent.scale.set(1.1, 1.2, 0.9);
+  parent.add(asset.model);
+  parent.updateMatrixWorld(true);
+  const ground = createFootGrounding(
+    asset.model,
+    asset.bones.Hips,
+    asset.bones.LeftFoot,
+    asset.bones.RightFoot,
+    { skinnedContacts: true },
+  );
+  assert.ok(ground);
+  const vertices: { mesh: SkinnedMesh; vertex: number }[] = [];
+  forEachFootVertex(asset.model, (mesh, vertex) => vertices.push({ mesh, vertex }));
+  const walk = createImportedWalk(asset.model, asset.clips);
+  walk.step(1, 0, true, false);
+  const point = new Vector3(),
+    rootPosition = asset.model.position.clone();
+  let maxGap = 0;
+  for (let frame = 0; frame < 65; frame++) {
+    asset.reset();
+    walk.resetPose();
+    walk.step(1 / 60, walk.debug.cycleDistance / 64, true, false);
+    walk.apply(true);
+    asset.model.updateWorldMatrix(true, true);
+    ground(0);
+    asset.model.updateWorldMatrix(true, true);
+    let sole = Infinity;
+    for (const { mesh, vertex } of vertices) {
+      mesh.getVertexPosition(vertex, point).applyMatrix4(mesh.matrixWorld);
+      sole = Math.min(sole, point.y);
+    }
+    maxGap = Math.max(maxGap, Math.abs(sole));
+    assert.ok(Math.abs(sole) < 0.005, `phase ${walk.debug.phase}: sole ${sole}`);
+    assert.deepEqual(asset.model.position.toArray(), rootPosition.toArray());
+  }
+  context.diagnostic(JSON.stringify({ poses: 65, maxSoleGap: maxGap }));
 });

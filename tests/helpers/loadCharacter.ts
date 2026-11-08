@@ -3,6 +3,8 @@ import { Bone, Mesh, Object3D, SkinnedMesh, Texture } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import type { Legend } from '../../src/game/data/gameConfig';
+import { MODEL_PATHS } from '../../src/game/assets/manifest';
+import { isolateWalkingCharacter } from '../../src/game/entities/importedWalk';
 export async function loadCharacter(legend: Legend) {
   const loader = new GLTFLoader();
   const textures: Texture[] = [];
@@ -14,14 +16,17 @@ export async function loadCharacter(legend: Legend) {
       return texture;
     },
   }));
-  const file = legend === 'shaq' ? 'shaquille_oneal' : 'charles_barkley';
-  const bytes = await readFile(new URL(`../../public/models/${file}.glb`, import.meta.url));
+  const bytes = await readFile(new URL(`../../public/${MODEL_PATHS[legend]}`, import.meta.url));
   const gltf = await loader.parseAsync(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
     '',
   );
   const model = clone(gltf.scene),
     second = clone(gltf.scene);
+  if (legend === 'shaq') {
+    isolateWalkingCharacter(model);
+    isolateWalkingCharacter(second);
+  }
   const bones: Record<string, Bone> = {};
   model.traverse((o) => {
     if (o instanceof Bone) bones[o.name.replace(/^mixamorig:?/, '')] = o;

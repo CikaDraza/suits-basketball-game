@@ -22,6 +22,15 @@ export interface LocomotionSnapshot {
   reachDrop: number;
   stride: number;
   grounded: boolean;
+  importedWalk?: {
+    clip: string;
+    source: string;
+    weight: number;
+    phase: number;
+    time: number;
+    cycleDistance: number;
+    applied: number;
+  };
   feet: { planted: boolean; target: Point; neutral: Point; lift: number; yaw: number }[];
 }
 

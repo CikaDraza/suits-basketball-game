@@ -19,7 +19,9 @@ for (const legend of ['shaq', 'chuck'] as const) {
     assert.ok(Object.values(asset.bones).every((b) => !secondBones.has(b)));
     assert.deepEqual(
       asset.clips.map((c) => c.name),
-      ['FaceDemo'],
+      legend === 'shaq'
+        ? ['Armature.001|mixamo.com|Layer0 Retarget', 'FaceDemo', 'Armature.001|mixamo.com|Layer0']
+        : ['FaceDemo'],
     );
     const arms = (['Left', 'Right'] as const).map((side) =>
       createArmContact(

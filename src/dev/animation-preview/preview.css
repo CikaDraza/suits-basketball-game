@@ -1,0 +1,154 @@
+:root {
+  font:
+    14px/1.5 system-ui,
+    sans-serif;
+  color: #edf0f4;
+  background: #171b20;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+select,
+input {
+  font: inherit;
+}
+button {
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  border: 1px solid #748292;
+  border-radius: 5px;
+  background: #293541;
+  color: inherit;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #eeb962;
+  outline-offset: 3px;
+}
+button:hover {
+  background: #3a4c5e;
+}
+.animation-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  min-height: 100dvh;
+}
+.preview-stage {
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  min-width: 0;
+}
+.preview-labels {
+  position: absolute;
+  inset: 20px 16px auto;
+  display: flex;
+  justify-content: space-around;
+  z-index: 1;
+  pointer-events: none;
+  gap: 20px;
+}
+.preview-labels span {
+  padding: 6px 10px;
+  background: #171b20dd;
+  border-radius: 4px;
+}
+.orbit-hint {
+  position: absolute;
+  bottom: 8px;
+  inset-inline: 20px;
+  pointer-events: none;
+  color: #c1cad4;
+  background: #171b20cc;
+  padding: 6px;
+}
+.preview-panel {
+  padding: 24px;
+  border-left: 1px solid #45505d;
+  overflow-wrap: anywhere;
+}
+h1 {
+  font-size: 1.5rem;
+  margin-top: 4px;
+}
+h2 {
+  font-size: 1.05rem;
+  margin-top: 24px;
+}
+.eyebrow {
+  color: #eeb962;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+}
+fieldset {
+  border: 1px solid #566371;
+  border-radius: 6px;
+  padding: 16px;
+  margin-block: 20px;
+  min-width: 0;
+}
+label {
+  display: block;
+  margin-block: 12px;
+}
+select,
+input[type='range'] {
+  width: 100%;
+  margin-top: 6px;
+}
+select {
+  padding: 8px;
+}
+.playback-buttons {
+  display: flex;
+  gap: 8px;
+  margin-block: 16px;
+}
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.warning {
+  background: #4b3519;
+  border: 1px solid #b58b46;
+  padding: 12px;
+  border-radius: 5px;
+}
+ul {
+  padding-left: 20px;
+}
+li {
+  margin-block: 12px;
+}
+details {
+  border-top: 1px solid #45505d;
+  padding-block: 16px;
+}
+summary {
+  cursor: pointer;
+}
+pre {
+  white-space: pre-wrap;
+  font-size: 11px;
+}
+@media (max-width: 850px) {
+  .animation-preview {
+    grid-template-columns: 1fr;
+  }
+  .preview-stage {
+    height: 65dvh;
+    position: relative;
+  }
+  .preview-panel {
+    border-left: 0;
+    border-top: 1px solid #45505d;
+  }
+}

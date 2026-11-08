@@ -5,12 +5,16 @@ import test from 'node:test';
 import { Bone, Mesh, Quaternion, SkinnedMesh, Texture, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import report from '../docs/shaq-skinning-report.json';
+import { MODEL_ARCHIVES } from '../src/game/assets/manifest';
+import { isolateWalkingCharacter } from '../src/game/entities/importedWalk';
 
 const assetURL = new URL('../public/models/shaquille_oneal.glb', import.meta.url);
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 test('the repaired Shaq asset changes only skin indices/weights and matches the authoring copy', async () => {
-  const bytes = await readFile(assetURL);
+  const bytes = await readFile(
+    new URL(`../public/${MODEL_ARCHIVES.shaqOriginal}`, import.meta.url),
+  );
   const authoring = await readFile(
     new URL('../Basketball_Characters/models/shaquille_oneal.glb', import.meta.url),
   );
@@ -48,6 +52,7 @@ test('real Shaq skinning survives 324 finger/wrist poses without spikes or oppos
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
     '',
   );
+  isolateWalkingCharacter(gltf.scene);
   const bones: Bone[] = [];
   let body: SkinnedMesh | undefined;
   gltf.scene.traverse((object) => {
