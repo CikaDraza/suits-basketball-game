@@ -384,6 +384,11 @@ h2 span {
   bottom: 15px;
   opacity: 0.5;
 }
+.studio-branding {
+  color: #fff;
+  font-size: clamp(10px, 1.8cqh, 14px);
+  font-weight: 500;
+}
 .help-panel {
   justify-content: flex-start;
   padding-top: 8cqh;

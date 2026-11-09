@@ -5,4 +5,4 @@ export { PauseMenu } from './PauseMenu';
 export { HelpScreen } from './HelpScreen';
 export { GameOver } from './GameOver';
 export { WinScreen } from './WinScreen';
-export { JabaliBranding } from './JabaliBranding';
+export { DmdBranding } from './DmdBranding';
