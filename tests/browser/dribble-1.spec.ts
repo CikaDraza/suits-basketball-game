@@ -22,6 +22,8 @@ type Handling = {
   local: Point;
   postBlend: number;
   shape: { hipSide: number; dribbleForward: number; dribbleTop: number } | null;
+  skill: { kind: 'side' | 'front' | 'behind'; started: boolean; total: number } | null;
+  lastSkill: { kind: 'side' | 'front' | 'behind'; initialHand: Hand; total: number } | null;
 };
 type Snapshot = {
   time: number;
@@ -175,20 +177,42 @@ function checkPath(frames: Frame[], label: string) {
         Math.hypot(previous.control.local.x, previous.control.local.z),
       ) *
         angleDifference(frame.player.angle, previous.player.angle);
+    const shape = frame.control.shape!;
+    const { skills } = config.ballControl;
+    const fastestPeriod = Math.min(skills.period, config.ballControl.period);
+    const maxBallSpeed = Math.hypot(
+      (3 * shape.hipSide + 2 * Math.PI * skills.sideReach) / fastestPeriod,
+      (4 * (shape.dribbleTop - config.ball.radius)) / fastestPeriod,
+      (Math.PI *
+        Math.max(
+          config.ballControl.crossoverForward,
+          Math.abs(skills.behindForward - shape.dribbleForward),
+        )) /
+        fastestPeriod,
+    );
     // Rapier interpolates the rendered mesh even on frames without a physics tick.
     // Compare each position with its own clock, rather than treating dt=0 as a teleport.
     expect(
       distance(frame.physicsBall, previous.physicsBall),
       `${label}: physics ball jump`,
-    ).toBeLessThan(10 * dt + bodyMotion + 0.08);
+    ).toBeLessThan(maxBallSpeed * dt + bodyMotion + 0.08);
     expect(distance(frame.ball, previous.ball), `${label}: rendered ball jump`).toBeLessThan(
-      10 * (frame.renderTime - previous.renderTime) + bodyMotion + 0.08,
+      maxBallSpeed * (frame.renderTime - previous.renderTime) + bodyMotion + 0.08,
     );
-    const expectedPhase = (previous.control.phase + dt / config.ballControl.period) % 1;
-    const phaseError = Math.abs(frame.control.phase - expectedPhase);
-    expect(Math.min(phaseError, Math.abs(phaseError - 1)), `${label}: phase reset`).toBeLessThan(
-      1e-6,
-    );
+    const skillDuringInterval =
+      previous.control.skill ||
+      frame.control.skill ||
+      JSON.stringify(previous.control.lastSkill) !== JSON.stringify(frame.control.lastSkill);
+    const bothRapid = previous.control.skill?.started && frame.control.skill?.started;
+    const minimumProgress = dt / (bothRapid ? fastestPeriod : config.ballControl.period);
+    const maximumProgress = dt / (skillDuringInterval ? fastestPeriod : config.ballControl.period);
+    const progress = (frame.control.phase - previous.control.phase + 1) % 1;
+    // Entry and completion can change the bounce speed inside this interval.
+    // Some whole number of cycles must still fit between the two valid rates.
+    expect(
+      Math.ceil(minimumProgress - progress - 1e-6),
+      `${label}: bounce phase jumps outside the normal/rapid clock rates`,
+    ).toBeLessThanOrEqual(Math.floor(maximumProgress - progress + 1e-6));
   }
 }
 function checkContacts(frames: Frame[], label: string) {
@@ -330,12 +354,34 @@ for (const legend of ['shaq', 'chuck'] as const) {
     for (const hand of [1, -1] as const) {
       await requestHand(page, hand);
       const crossing = await record(page, 1.4);
-      expect((await state(page)).ballControl.hand).toBe(hand);
-      expect(crossing.some((frame) => frame.control.crossing)).toBe(true);
-      // A rearmed gesture toward the same active hand produces no second crossover.
+      const afterCross = await state(page);
+      expect(afterCross.ballControl.hand).toBe(hand);
+      const completedTransfer =
+        afterCross.ballControl.lastSkill?.kind === 'side' &&
+        afterCross.ballControl.lastSkill.total === 1 &&
+        afterCross.ballControl.lastSkill.initialHand === -hand;
+      expect(
+        crossing.some((frame) => frame.control.crossing) || completedTransfer,
+        'the requested transfer must be observed or recorded as completed',
+      ).toBe(true);
+      // A rearmed gesture toward the active hand produces two quick outward bounces.
       await requestHand(page, hand);
-      const sameHand = await record(page, 0.7);
+      const sameHand = await record(
+        page,
+        config.ballControl.period + 2 * config.ballControl.skills.period + 0.1,
+      );
       expect(sameHand.every((frame) => !frame.control.crossing)).toBe(true);
+      expect(
+        sameHand.some(
+          (frame) => frame.control.skill?.kind === 'side' && frame.control.skill.total === 2,
+        ),
+        'same-hand gesture should trigger two rapid bounces',
+      ).toBe(true);
+      expect(sameHand.at(-1)!.control.lastSkill).toMatchObject({
+        kind: 'side',
+        initialHand: hand,
+        total: 2,
+      });
       const stationary = await state(page);
       const toBasket = movement.worldToStick(
         level.hoop.x - stationary.player.x,

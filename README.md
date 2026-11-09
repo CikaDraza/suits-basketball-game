@@ -23,9 +23,23 @@ Postojeći Chromium može se zadati preko `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
 Playwright automatski pokreće lokalni server kada već nije pokrenut.
 
 Kontrole: WASD/strelice za kretanje, Space/R za šut ili odbranu, Q/J za post/spin,
-Escape za pauzu/nastavak. Z/C biraju anatomsku levu/desnu ruku; desna palica bira
-vidljivu stranu prema kameri i orijentaciji igrača. Vrati palicu u sredinu pre
-novog crossover-a. Izbor ruke radi i u mestu i ostaje sačuvan tokom kretanja.
+E za inbound, Escape za pauzu/nastavak. Na gamepadu je inbound zasebno ✕ / A,
+Square/X šut, a Triangle/Y stav. Z/C biraju anatomsku levu/desnu ruku na tastaturi.
+U odbrani desna palica prati telo i kameru: levo/desno otvara odgovarajuću ruku
+sa dlanom napred, napred podiže obe, a dva brza poteza napred uključuju mahanje.
+Držanje nazad postavlja obe podlaktice za kontakt; dva brza poteza nazad odguruju
+protivnika ispred i u dometu. Između poteza vrati palicu u neutralu.
+Neutralni položaj spušta ruke;
+obe podignute ruke računaju se kao contest. Četiri Axis smera mogu se podesiti
+odvojeno u napadu i odbrani.
+
+Desna palica prati telo igrača i kameru: ka strani lopte daje dva brza bočna
+odskoka istom rukom, na suprotnu stranu crossover, napred tri brza prebacivanja
+ispred tela, nazad jedno iza leđa. Dva brza poteza nazad daju tri prebacivanja
+iza leđa i završavaju na suprotnoj ruci od početne. Vrati palicu u sredinu između
+poteza. Pun otklon leve palice pri ovim driblinzima nosi 90% rizika od gubitka
+kontrole lopte. U gamepad podešavanjima postoje četiri smera desne palice,
+svaki isključivo kao Axis; zasebno mapiranje leve/desne ruke je uklonjeno.
 Na telefonu se koriste džojstik i □/△/○/✕ u landscape
 prikazu. Mape za napad/odbranu i uređaje podešavaju se i pamte kroz Pause → Controls.
 

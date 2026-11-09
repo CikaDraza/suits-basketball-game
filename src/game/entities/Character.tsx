@@ -25,6 +25,8 @@ import { createFaceController } from './faceController';
 import { createFootGrounding } from './footGrounding';
 import { contactArm } from './locomotion';
 import { createHandContactPose } from './handContactPose';
+import { applyDefensiveArmPose } from './defensiveArmPose';
+import { createDefensiveArmContact } from './defensiveArmContact';
 import { protectedBallTarget, smoothUnit } from '../simulation/ballHandling';
 import { HandContactDebug } from './HandContactDebug';
 import { createLegRig } from './legRig';
@@ -223,34 +225,37 @@ export function Character({ index, legend }: CharacterProps) {
   const hasImportedWalk = legend === 'shaq';
   const modelPath = MODEL_PATHS[legend];
   const gltf = useGLTF(modelPath);
-  const { model, rig, face, skeletons, groundFeet, legRig, hands, walk } = useMemo(() => {
-    const model = cloneSkinned(gltf.scene);
-    if (hasImportedWalk) isolateWalkingCharacter(model);
-    model.userData.modelPath = modelPath;
-    const skeletons = new Set<Skeleton>();
-    model.traverse((object) => {
-      if (object instanceof Mesh) object.frustumCulled = false;
-      if (object instanceof SkinnedMesh) skeletons.add(object.skeleton);
-    });
-    const rig = buildRig(model);
-    return {
-      model,
-      rig,
-      face: createFaceController(model),
-      skeletons,
-      walk: hasImportedWalk ? createImportedWalk(model, gltf.animations) : null,
-      // measured in the detached bind pose, before any posing
-      legRig: createLegRig(model, rig.bones),
-      hands: createHandContactPose(model, legend),
-      groundFeet: createFootGrounding(
+  const { model, rig, face, skeletons, groundFeet, legRig, hands, defenseArms, walk } =
+    useMemo(() => {
+      const model = cloneSkinned(gltf.scene);
+      if (hasImportedWalk) isolateWalkingCharacter(model);
+      model.userData.modelPath = modelPath;
+      const skeletons = new Set<Skeleton>();
+      model.traverse((object) => {
+        if (object instanceof Mesh) object.frustumCulled = false;
+        if (object instanceof SkinnedMesh) skeletons.add(object.skeleton);
+      });
+      const rig = buildRig(model);
+      const hands = createHandContactPose(model, legend);
+      return {
         model,
-        rig.bones.Hips,
-        rig.bones.LeftFoot,
-        rig.bones.RightFoot,
-        { skinnedContacts: hasImportedWalk },
-      ),
-    };
-  }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath]);
+        rig,
+        face: createFaceController(model),
+        skeletons,
+        walk: hasImportedWalk ? createImportedWalk(model, gltf.animations) : null,
+        // measured in the detached bind pose, before any posing
+        legRig: createLegRig(model, rig.bones),
+        hands,
+        defenseArms: createDefensiveArmContact(hands.arms, legend),
+        groundFeet: createFootGrounding(
+          model,
+          rig.bones.Hips,
+          rig.bones.LeftFoot,
+          rig.bones.RightFoot,
+          { skinnedContacts: hasImportedWalk },
+        ),
+      };
+    }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath]);
   const shadowTexture = useMemo(createShadowTexture, []);
   useEffect(() => () => shadowTexture.dispose(), [shadowTexture]);
   useEffect(
@@ -740,6 +745,16 @@ export function Character({ index, legend }: CharacterProps) {
         target.rDown = 0.9;
       }
     }
+    const pushAge = t - p.defensePushAt;
+    const pushingArms = pushAge >= 0 && pushAge < config.defense.hands.pushDuration;
+    const defensiveHands = pushingArms ? 'push' : p.defenseHands;
+    const defensiveArmsEnabled = !controlled && !receiving && grounded && p.mode !== 'stun';
+    if (defensiveArmsEnabled) {
+      applyDefensiveArmPose(target, defensiveHands, t, pushAge / config.defense.hands.pushDuration);
+      if (defensiveHands === 'brace' || defensiveHands === 'push')
+        target.lean = Math.max(target.lean, 0.24);
+    }
+
     // posture lean: low defensive stance; bracing leans into the blocker
     target.lean +=
       0.18 * st.wDefensive * (states.upper === 'guard' || states.upper === 'deny' ? 0 : 1);
@@ -951,6 +966,15 @@ export function Character({ index, legend }: CharacterProps) {
       groundPoint,
       p.angle,
       Math.min(rawDt, 0.25),
+    );
+    defenseArms.update(
+      defensiveHands,
+      groundPoint,
+      p.angle,
+      opponent,
+      Math.min(rawDt, 0.25),
+      defensiveArmsEnabled,
+      pushAge / config.defense.hands.pushDuration,
     );
     model.updateWorldMatrix(true, true);
     // Compatibility diagnostic, never used as an attachment target by the ball controller.

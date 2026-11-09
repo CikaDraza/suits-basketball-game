@@ -9,30 +9,44 @@ export interface SkillVector {
 export interface SkillGestureThresholds {
   activate?: number;
   release?: number;
-  lateral?: number;
   /** Ground-depth compression in the locked gameplay camera, sin(camera pitch). */
   verticalScale?: number;
 }
 
+export type DribbleSkillKind = 'side' | 'front' | 'behind';
+
 export interface HandGesture {
+  kind: DribbleSkillKind;
+  /** Anatomical target for side gestures; front/behind retain the ball's current hand. */
   hand: 1 | -1;
   /** Body orientation captured at activation, never reinterpreted while held. */
   facing: number;
   sequence: number;
+  /** Two distinct rear flicks, separated by neutral, inside the combination window. */
+  double?: boolean;
 }
 
 export const SKILL_GESTURE_DEFAULTS = {
   activate: 0.65,
   release: 0.25,
-  lateral: 0.25,
+  doubleFlickWindow: 0.32,
 } as const;
+
+/** Shared camera/body projection for dribble gestures and held defensive poses. */
+export function resolveSkillDirection(vector: SkillVector, facing: number, yaw: number, pitch = 1) {
+  if (![vector.x, vector.z, facing, yaw, pitch].every(Number.isFinite) || pitch <= 0) return null;
+  const world = createMovementTransform(yaw).stickToWorld(vector.x, vector.z / pitch);
+  const side = -world.x * Math.cos(facing) + world.z * Math.sin(facing);
+  const forward = world.x * Math.sin(facing) + world.z * Math.cos(facing);
+  const kind: DribbleSkillKind =
+    Math.abs(forward) > Math.abs(side) + 1e-9 ? (forward > 0 ? 'front' : 'behind') : 'side';
+  return { kind, hand: (side > 0 ? -1 : 1) as 1 | -1 };
+}
 
 /** One skill command per neutral → deliberate direction gesture; no body transform writes. */
 export function createSkillGesture(cameraAngle: number, thresholds: SkillGestureThresholds = {}) {
-  const movement = createMovementTransform(cameraAngle);
   const activate = thresholds.activate ?? SKILL_GESTURE_DEFAULTS.activate;
   const release = thresholds.release ?? SKILL_GESTURE_DEFAULTS.release;
-  const lateral = thresholds.lateral ?? SKILL_GESTURE_DEFAULTS.lateral;
   const verticalScale = thresholds.verticalScale ?? 1;
   let armed = false;
   let sequence = 0;
@@ -40,8 +54,21 @@ export function createSkillGesture(cameraAngle: number, thresholds: SkillGesture
     reset() {
       armed = false;
     },
-    sample(vector: SkillVector, facing: number): HandGesture | null {
-      if (!Number.isFinite(vector.x) || !Number.isFinite(vector.z) || !Number.isFinite(facing)) {
+    sample(
+      vector: SkillVector,
+      facing: number,
+      camera: { cameraAngle?: number; verticalScale?: number } = {},
+    ): HandGesture | null {
+      const yaw = camera.cameraAngle ?? cameraAngle;
+      const pitch = camera.verticalScale ?? verticalScale;
+      if (
+        !Number.isFinite(vector.x) ||
+        !Number.isFinite(vector.z) ||
+        !Number.isFinite(facing) ||
+        !Number.isFinite(yaw) ||
+        !Number.isFinite(pitch) ||
+        pitch <= 0
+      ) {
         armed = false;
         return null;
       }
@@ -51,15 +78,14 @@ export function createSkillGesture(cameraAngle: number, thresholds: SkillGesture
         return null;
       }
       if (!armed || magnitude < activate) return null;
-      // Even an ambiguous gesture consumes this deflection: turning while held
-      // cannot turn a rejected forward/backward command into a different action.
       armed = false;
-      const right = movement.worldToStick(-Math.cos(facing), Math.sin(facing));
-      right.z *= verticalScale;
-      const length = Math.hypot(right.x, right.z);
-      const side = (vector.x * right.x + vector.z * right.z) / (magnitude * length);
-      if (!Number.isFinite(side) || Math.abs(side) <= lateral) return null;
-      return { hand: side > 0 ? -1 : 1, facing, sequence: ++sequence };
+      // Undo the camera's compressed ground depth before resolving the body's
+      // axes. Projected forward and right are not orthogonal on a tilted camera.
+      return {
+        ...resolveSkillDirection(vector, facing, yaw, pitch)!,
+        facing,
+        sequence: ++sequence,
+      };
     },
   };
 }

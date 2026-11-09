@@ -11,15 +11,16 @@ Osnovne mape i učenje komandi sada su implementirani na korisnički zahtev.
 To ne označava završetak punog S02 ugovora opisanog niže: zajednički intent sat,
 deterministički replay i sve buduće tehnike još nisu implementirani.
 
-| Izvor/komanda        | Sadašnji smisao                                                                                                                                                                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WASD ili strelice    | Kretanje relativno kameri; kratak direction tap iz hold-a daje jab, zadržano kretanje prelazi u dribling                                                                                                                                    |
-| R ili Space / Square | ACTION_A: priprema/puštanje šuta u napadu; contest/steal u odbrani; postojeći triple-tap smash                                                                                                                                              |
-| Q ili J / Triangle   | ACTION_B: post/spin, dupli tap flop; tokom inbound pozicioniranja stav/zagrađivanje, u pass prozoru odmah zahtev za dodavanje                                                                                                               |
-| Escape               | Pauza/nastavak jednom po fizičkom pritisku                                                                                                                                                                                                  |
-| Z / C                | Leva/desna ruka: pokreće dribling u mestu ili traži crossover; ne pokreće telo                                                                                                                                                              |
-| Touch                | Analogni joystick i Square/Triangle; Circle/Cross biraju levu/desnu ruku u napadu                                                                                                                                                           |
-| Gamepad              | Leva palica pomera telo; desna palica je zaseban 2D smer prema vidljivoj šaci (default ose 2/3, remapabilno). Ruka ostaje izabrana dok nova validna komanda ne zatraži drugu. Square/X i Triangle/Y ostaju postojeće akcije; Options pauza. |
+| Izvor/komanda        | Sadašnji smisao                                                                                                                                                                                                                                                                                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WASD ili strelice    | Kretanje relativno kameri; kratak direction tap iz hold-a daje jab, zadržano kretanje prelazi u dribling                                                                                                                                                                                                                                                   |
+| R ili Space / Square | ACTION_A: priprema/puštanje šuta u napadu; contest/steal u odbrani; postojeći triple-tap smash                                                                                                                                                                                                                                                             |
+| Q ili J / Triangle   | ACTION_B: post/spin, dupli tap flop; tokom celog inbound-a samo stav/zagrađivanje                                                                                                                                                                                                                                                                          |
+| E / Cross ili A      | INBOUND: zaseban zahtev za dodavanje u inbound pass prozoru; rani pritisak ne zakazuje dodavanje                                                                                                                                                                                                                                                           |
+| Escape               | Pauza/nastavak jednom po fizičkom pritisku                                                                                                                                                                                                                                                                                                                 |
+| Z / C                | Leva/desna ruka: pokreće dribling u mestu ili traži crossover; ne pokreće telo                                                                                                                                                                                                                                                                             |
+| Touch                | Analogni joystick i Square/Triangle; Circle/Cross biraju levu/desnu ruku u napadu                                                                                                                                                                                                                                                                          |
+| Gamepad              | Leva palica pomera telo; desna palica je zaseban 2D smer relativan telu i kameri (default ose 2/3). Strana lopte: dva brza bočna driblinga istom rukom; suprotna strana: crossover; napred: tri brza prebacivanja; nazad: jedno iza leđa; dva brza poteza nazad: tri prebacivanja iza leđa. Cross/A inbound, Square/X šut, Triangle/Y stav, Options pauza. |
 
 Pause → Controls čuva odvojene offense/defense mape za keyboard, gamepad i mobile
 u `suits.controls.v1`. Učenje prvo zahteva neutralan kontroler, a posle čuva komandu
@@ -27,9 +28,26 @@ tek uz puštanje gestа pre povratka u igru. Escape ostaje izlaz/pauza. Mobilne 
 menjaju četiri dugmeta, a postojeća leva palica ostaje analogno kretanje.
 
 Keyboard/touch aliasi i izvori već imaju testove oslobađanja i blur/pause cleanup-a.
-Aktuelni DRIBBLE-1 daje desnoj palici zaseban 2D vektor za izbor vidljive ruke prema
-kamernoj projekciji i orijentaciji igrača, sa četiri remapabilna smera. Nije još
-opšti sistem košarkaških tehnika. Kretanje ne menja izabranu ruku. Detalji gestova,
+Aktuelna desna palica daje zaseban 2D vektor za izbor driblinga prema
+kamernoj projekciji i orijentaciji igrača, sa četiri remapabilna Axis smera.
+Zasebne gamepad akcije HAND_LEFT/HAND_RIGHT više se ne nude niti izvršavaju;
+Z/C i touch zadržavaju izbor ruke. Stari gamepad hand Axis prelaze u odgovarajući
+bočni smer, a hand dugmad se uklanjaju. Između poteza palica mora proći kroz neutralu.
+U odbrani se desna palica čita kao držana komanda relativno trenutnom telu i kameri:
+levo/desno otvara odgovarajuću ruku dlanom napred, napred podiže obe, a dva brza
+poteza napred uključuju mahanje. Nazad postavlja obe podlaktice za kontakt, a dva
+brza poteza nazad izvršavaju jedno fizičko odgurivanje protivnika ispred u dometu.
+Dupli potezi traže neutralu između aktivacija, imaju vremenski prozor iz config-a
+i ne ponavljaju se držanjem. Odgurivanje ima pripremu i cooldown; zamah u prazno
+ne deluje naknadno kada protivnik priđe.
+Neutralni položaj spušta ruke. Obe podignute ruke računaju se kao contest u dometu.
+Četiri Axis smera mogu se nezavisno dodeliti u odbrambenoj mapi; gubitak veze,
+pauza, reset i prelazak u napad čiste odbrambenu komandu.
+Brza serija napred i dupli potez nazad izvršavaju tri prebacivanja: početna leva
+daje leva → desna → leva → desna, a početna desna obrnuto.
+Pun otklon leve palice pri ovim potezima ima 90% rizika od fizičkog gubitka kontrole;
+lopta prelazi u loose stanje sa brzinom, umesto da ostane nalepljena za šaku.
+Kretanje samo po sebi ne menja izabranu ruku. Detalji prvobitnih gestova,
 neutralnog stanja, migracije starih mapa i odloženih komandi su u
 [DRIBBLE-1 izveštaju](DRIBBLE_1_IMPLEMENTATION.md).
 `inputStore` meri gestove event vremenom, gamepad u simulaciji; S02 mora to da
@@ -41,18 +59,19 @@ Kolona tastature za nove akcije je **predlog za proveru**, a ne izmena usvojene
 mape. Ne menjati postojeće Q/R/Space alias-e usput. Konačnu mapu i konflikt između
 fake/shot/smash potvrditi u slice-u koji ih uvodi.
 
-| Semantička namera                 | Gamepad predlog                      | Tastatura predlog                                                    | Touch ekvivalent                          |
-| --------------------------------- | ------------------------------------ | -------------------------------------------------------------------- | ----------------------------------------- |
-| Move                              | Leva palica, radijalna magnituda 0–1 | WASD/strelice, normalizovan vektor                                   | Postojeći joystick                        |
-| SkillDirection                    | Desna palica, zaseban vektor i gest  | Konfigurabilan klaster ili pointer; izbor otvoren jer je J već alias | Drugi virtuelni stick/gest; oblik otvoren |
-| Shoot / Contest                   | Square                               | R/Space, postojeće                                                   | Square                                    |
-| Pivot / Post / contextual inbound | Triangle                             | Q/J, postojeće                                                       | Triangle                                  |
-| Reach / Steal                     | Circle                               | E, predlog                                                           | Circle, aktivirati tek uz podržanu akciju |
-| Jump / Rebound                    | Cross                                | F, predlog; Space ostaje shoot alias                                 | Cross, aktivirati uz S12                  |
-| Brace / Body-up                   | L1                                   | C, predlog                                                           | Zaseban držani modifier, UX proveriti     |
-| Protect / DefensiveStance         | L2, analogna jačina                  | X, digitalno 0/1, predlog                                            | Analog/digital modifier sa jasnim stanjem |
-| Hustle / Drive                    | R1                                   | LeftShift, predlog                                                   | Modifier brzine/drive-a                   |
-| Pause                             | Options                              | Escape                                                               | Postojeći pause UI                        |
+| Semantička namera         | Gamepad predlog                      | Tastatura predlog                                                    | Touch ekvivalent                          |
+| ------------------------- | ------------------------------------ | -------------------------------------------------------------------- | ----------------------------------------- |
+| Move                      | Leva palica, radijalna magnituda 0–1 | WASD/strelice, normalizovan vektor                                   | Postojeći joystick                        |
+| SkillDirection            | Desna palica, zaseban vektor i gest  | Konfigurabilan klaster ili pointer; izbor otvoren jer je J već alias | Drugi virtuelni stick/gest; oblik otvoren |
+| Shoot / Contest           | Square                               | R/Space, postojeće                                                   | Square                                    |
+| Pivot / Post              | Triangle                             | Q/J, postojeće                                                       | Triangle                                  |
+| Inbound                   | Cross / A                            | E, postojeće                                                         | Zasebno inbound dugme u pass prozoru      |
+| Reach / Steal             | Circle                               | Izbor otvoren; E je inbound                                          | Circle, aktivirati tek uz podržanu akciju |
+| Jump / Rebound            | Izbor otvoren; Cross je inbound      | F, predlog; Space ostaje shoot alias                                 | Izbor otvoren, aktivirati uz S12          |
+| Brace / Body-up           | L1                                   | C, predlog                                                           | Zaseban držani modifier, UX proveriti     |
+| Protect / DefensiveStance | L2, analogna jačina                  | X, digitalno 0/1, predlog                                            | Analog/digital modifier sa jasnim stanjem |
+| Hustle / Drive            | R1                                   | LeftShift, predlog                                                   | Modifier brzine/drive-a                   |
+| Pause                     | Options                              | Escape                                                               | Postojeći pause UI                        |
 
 R2 nema dodeljenu novu akciju. Ne pretpostavljati da različiti uređaji imaju iste
 indekse bez `mapping`/profil provere. Nedostupne akcije moraju imati jasno definisan
@@ -110,8 +129,9 @@ fixed-step/replay seam je planiran u S02, uz očuvanje postojećeg Rapier vlasni
 ## Prioritet, faze i prekid akcije
 
 Redosled: meni/pauza → legalnost po lifecycle-u → committed akcija/recovery →
-kontekst trenutnog poseda → nova namera. Q u inbound pass prozoru ostaje trenutni
-zahtev; raniji Q tokom positioning-a ne zakazuje automatski kasnije dodavanje.
+kontekst trenutnog poseda → nova namera. INBOUND (Cross/A/E) u pass prozoru daje
+trenutni zahtev; raniji pritisak tokom positioning-a ne zakazuje kasnije dodavanje.
+Q/Triangle ostaje isključivo stav i ne izvršava inbound.
 
 Svaka tehnika dokumentuje: preduslove, nameru, pripremu, prenos težine, izvođenje,
 kontakt/release, fizički rezultat, recovery, cancel/interruption, cenu, animaciono

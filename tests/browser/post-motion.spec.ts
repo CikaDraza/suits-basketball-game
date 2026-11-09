@@ -83,7 +83,7 @@ function expectSteps(samples: Awaited<ReturnType<typeof record>>) {
 }
 
 for (const legend of ['shaq', 'chuck'] as const) {
-  test(`${legend}: inbound arms rest until Q, the contact/asking arms switch sides, and Q in the window passes immediately`, async ({
+  test(`${legend}: inbound arms rest until Q, the contact/asking arms switch sides, and E in the window passes immediately`, async ({
     page,
   }, info) => {
     await bootGame(page);
@@ -128,7 +128,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
       await page.evaluate(() => window.__TEST__!.setInput({ moveX: 0, moveZ: 0 }));
     }
     await expect.poll(async () => (await state(page)).inbound).toMatchObject({ stage: 'pass' });
-    await page.keyboard.press('q');
+    await page.keyboard.press('e');
     await expect.poll(async () => (await state(page)).passes).toBe(1);
   });
 

@@ -336,6 +336,14 @@
     "period": 0.6,
     "transitionTime": 0.16,
     "crossoverForward": 0.18,
+    "skills": {
+      "period": 0.2,
+      "sideReach": 0.16,
+      "behindForward": -0.5,
+      "fullMoveThreshold": 0.95,
+      "movingLossChance": 0.9,
+      "doubleFlickWindow": 0.32
+    },
     "turnRate": 14,
     "armBlendRate": 24,
     "postDribble": {
@@ -387,6 +395,17 @@
     "brakeTime": 0.28
   },
   "defense": {
+    "hands": {
+      "waveRate": 2.5,
+      "waveAmplitude": 0.3,
+      "doubleFlickWindow": 0.35,
+      "pushDuration": 0.42,
+      "pushContactTime": 0.14,
+      "pushCooldown": 0.75,
+      "pushRange": 1.3,
+      "pushMinFacing": 0.6,
+      "pushSpeed": 4.5
+    },
     "guardRange": 3.2,
     "denyBallBias": 0.6,
     "slideSpeed": 0.75

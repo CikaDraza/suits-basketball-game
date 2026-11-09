@@ -56,7 +56,8 @@ export function ControlsSettings({ onBack }: { readonly onBack: () => void }) {
   const actions = CONTROL_ACTIONS.filter(
     (action) =>
       !(context === 'defense' && action.startsWith('HAND_')) &&
-      !(action.startsWith('SKILL_') && (device !== 'gamepad' || context === 'defense')) &&
+      !(device === 'gamepad' && action.startsWith('HAND_')) &&
+      !(action.startsWith('SKILL_') && device !== 'gamepad') &&
       !(device === 'mobile' && action.startsWith('MOVE_')),
   );
   const currentBinding = (action: ControlAction) =>
@@ -156,6 +157,19 @@ export function ControlsSettings({ onBack }: { readonly onBack: () => void }) {
                 {device === 'mobile' && (
                   <p className="controls-note">
                     Kretanje: leva virtuelna palica. Njena pozicija i smerovi ostaju isti.
+                  </p>
+                )}
+                {device === 'gamepad' && context === 'offense' && (
+                  <p className="controls-note">
+                    Desna palica prati položaj tela i pogled kamere: bočno dribling ili crossover,
+                    napred brzi crossoveri, nazad iza leđa. Za smerove dodeli samo Axis.
+                  </p>
+                )}
+                {device === 'gamepad' && context === 'defense' && (
+                  <p className="controls-note">
+                    Desna palica prati telo i kameru: levo/desno otvara ruku dlanom napred, napred
+                    podiže obe, dupli napred maše. Nazad postavlja podlaktice na protivnika, dupli
+                    nazad odguruje. Između poteza vrati palicu u neutralu. Dodeli Axis.
                   </p>
                 )}
                 {actions.map((action) => (
@@ -269,8 +283,9 @@ export function ControlsSettings({ onBack }: { readonly onBack: () => void }) {
                       />
                     </label>
                     <p className="controls-note">
-                      Smer desne palice bira vidljivu stranu igrača prema kameri. Vrati je u sredinu
-                      pre narednog crossover-a. Četiri smera palice mogu se zasebno mapirati.
+                      Vrati desnu palicu u sredinu između poteza. Dva brza povlačenja nazad daju
+                      seriju iza leđa. Pun otklon leve palice tokom ovih poteza nosi 90% rizika od
+                      gubitka kontrole lopte.
                     </p>
                   </>
                 )}

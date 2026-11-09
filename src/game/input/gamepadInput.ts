@@ -57,8 +57,6 @@ export function readGamepadInput(
     x /= length;
     z /= length;
   }
-  const left = value('HAND_LEFT'),
-    right = value('HAND_RIGHT');
   const rawSkillX = value('SKILL_RIGHT', 0) - value('SKILL_LEFT', 0),
     rawSkillZ = value('SKILL_UP', 0) - value('SKILL_DOWN', 0);
   const skillLength = Math.hypot(rawSkillX, rawSkillZ);
@@ -76,7 +74,8 @@ export function readGamepadInput(
     z,
     q: value('ACTION_B') > 0.5,
     r: value('ACTION_A') > 0.5,
-    hand: left > 0.55 && left > right ? 1 : right > 0.55 ? -1 : 0,
+    inbound: value('INBOUND') > 0.5,
+    hand: 0,
     skill,
     pause: value('PAUSE') > 0.5,
   };
@@ -85,9 +84,10 @@ export function readGamepadInput(
 export function pressedPadBinding(
   pad: PadState,
   neutralAxes?: readonly number[],
+  axisOnly = false,
 ): PadBinding | null {
   const button = pad.buttons.findIndex((b) => b.pressed || b.value > 0.65);
-  if (button >= 0) return { kind: 'button', index: button };
+  if (button >= 0 && !axisOnly) return { kind: 'button', index: button };
   let binding: PadBinding | null = null,
     peak = 0.7;
   pad.axes.forEach((_, i) => {
