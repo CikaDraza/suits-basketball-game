@@ -1,4 +1,5 @@
 import type { Legend } from '../data/gameConfig';
+import type { DefensiveHands } from '../input/defensiveHands';
 import type { InboundPassPlan, InboundPassOutcome, PassPoint } from './tacticalPass';
 
 export type PlayerSlot = 0 | 1;
@@ -21,11 +22,16 @@ export interface Fighter {
   vx: number;
   vz: number;
   hand: number;
+  defenseHands: DefensiveHands;
+  defensePushAt: number;
+  defensePushApplied: boolean;
+  defensePushCooldown: number;
   lastQ: number;
   lastR: number;
   taps: number;
   prevQ: boolean;
   prevR: boolean;
+  prevInbound: boolean;
   interceptUntil: number;
   prevX: number;
   aiClock: number;

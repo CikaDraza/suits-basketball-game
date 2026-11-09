@@ -78,7 +78,7 @@ function InboundPassButton() {
   const handlers = useInboundPass();
   return (
     <button type="button" className="inbound-prompt" aria-label="Pass inbound" {...handlers}>
-      ◯<span>Q / △</span>
+      ✕<span>E / ✕ / A</span>
     </button>
   );
 }

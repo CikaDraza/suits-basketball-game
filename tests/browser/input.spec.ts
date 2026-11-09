@@ -7,6 +7,7 @@ type InputSnapshot = {
   moveZ: number;
   actionA: boolean;
   actionB: boolean;
+  inbound: boolean;
 };
 
 const readInput = (page: Page) =>
@@ -109,6 +110,7 @@ test('releasing one action source preserves the other held source', async ({ pag
   for (const [key, action, field] of [
     ['r', 'ACTION_A', 'actionA'],
     ['q', 'ACTION_B', 'actionB'],
+    ['e', 'INBOUND', 'inbound'],
   ] as const) {
     await page.keyboard.down(key);
     await emit(page, { action, phase: 'down', source: 'touch' });

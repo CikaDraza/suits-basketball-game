@@ -80,7 +80,7 @@ test('skill axes use a radial deadzone and preserve cardinal/diagonal direction'
   );
 });
 
-test('the full skill pair is remappable while anatomical hand buttons stay explicit', () => {
+test('the full skill pair is remappable and retired hand buttons cannot fire', () => {
   const profile = createDefaultProfile();
   profile.offense.gamepad.SKILL_LEFT = { kind: 'axis', index: 5, sign: -1 };
   profile.offense.gamepad.SKILL_RIGHT = { kind: 'axis', index: 5, sign: 1 };
@@ -88,11 +88,78 @@ test('the full skill pair is remappable while anatomical hand buttons stay expli
   profile.offense.gamepad.SKILL_DOWN = { kind: 'axis', index: 4, sign: 1 };
   profile.offense.gamepad.HAND_LEFT = { kind: 'button', index: 10 };
   const mapped = readGamepadInput(pad([0, 0, 1, -1, 1, -1], [10]), profile.offense, 0.18);
-  assert.equal(mapped.hand, 1);
+  assert.equal(mapped.hand, 0);
   assert.equal(mapped.x, 0);
   assert.equal(mapped.z, 0);
   assert.ok(Math.abs(mapped.skill.x + Math.SQRT1_2) < 1e-12);
   assert.ok(Math.abs(mapped.skill.z + Math.SQRT1_2) < 1e-12);
+});
+
+test('inbound defaults to cross/A independently from stance and shooting and can be remapped', () => {
+  const profile = createDefaultProfile();
+  const inbound = readGamepadInput(pad([], [0]), profile.offense, profile.deadzone);
+  assert.equal(inbound.inbound, true);
+  assert.equal(inbound.q, false);
+  assert.equal(inbound.r, false);
+  assert.equal(readGamepadInput(pad([], [3]), profile.offense, profile.deadzone).inbound, false);
+  assert.equal(keyAction(profile.offense, 'KeyE'), 'INBOUND');
+  assert.equal(keyAction(profile.offense, 'KeyQ'), 'ACTION_B');
+  useControlSettingsStore.getState().bindPad('offense', 'INBOUND', { kind: 'button', index: 7 });
+  const mapped = useControlSettingsStore.getState().profile;
+  assert.equal(readGamepadInput(pad([], [7]), mapped.offense, mapped.deadzone).inbound, true);
+  assert.equal(readGamepadInput(pad([], [0]), mapped.offense, mapped.deadzone).inbound, false);
+});
+
+test('right-stick capture ignores buttons and accepts only the deliberate signed axis', () => {
+  assert.equal(pressedPadBinding(pad([], [0]), undefined, true), null);
+  assert.deepEqual(pressedPadBinding(pad([0, 0, 0, -1], [0]), undefined, true), {
+    kind: 'axis',
+    index: 3,
+    sign: -1,
+  });
+  const settings = useControlSettingsStore.getState();
+  settings.bindPad('offense', 'SKILL_LEFT', { kind: 'button', index: 0 });
+  assert.deepEqual(useControlSettingsStore.getState().profile.offense.gamepad.SKILL_LEFT, {
+    kind: 'axis',
+    index: 2,
+    sign: -1,
+  });
+  settings.bindPad('offense', 'HAND_LEFT', { kind: 'button', index: 0 });
+  assert.equal(useControlSettingsStore.getState().profile.offense.gamepad.HAND_LEFT, null);
+});
+
+test('saved profiles gain a separate inbound default and reject non-axis stick bindings', () => {
+  const restored = restoreProfile({
+    offense: {
+      keyboard: { ACTION_A: ['KeyE'] },
+      gamepad: {
+        ACTION_A: { kind: 'button', index: 0 },
+        HAND_LEFT: { kind: 'button', index: 7 },
+        SKILL_LEFT: { kind: 'button', index: 5 },
+      },
+    },
+  });
+  assert.deepEqual(restored.offense.gamepad.INBOUND, { kind: 'button', index: 0 });
+  assert.equal(restored.offense.gamepad.ACTION_A, null);
+  assert.equal(restored.offense.gamepad.HAND_LEFT, null);
+  assert.deepEqual(restored.offense.gamepad.SKILL_LEFT, { kind: 'axis', index: 2, sign: -1 });
+  assert.equal(keyAction(restored.offense, 'KeyE'), 'INBOUND');
+});
+
+test('restoring an old button-to-stick swap never fires shooting and dribbling from one axis', () => {
+  const restored = restoreProfile({
+    offense: {
+      gamepad: {
+        ACTION_A: { kind: 'axis', index: 2, sign: 1 },
+        SKILL_RIGHT: { kind: 'button', index: 2 },
+      },
+    },
+  });
+  assert.deepEqual(restored.offense.gamepad.ACTION_A, { kind: 'axis', index: 2, sign: 1 });
+  assert.equal(restored.offense.gamepad.SKILL_RIGHT, null);
+  const input = readGamepadInput(pad([0, 0, 1, 0]), restored.offense, restored.deadzone);
+  assert.equal(input.r, true);
+  assert.deepEqual(input.skill, { x: 0, z: 0 });
 });
 
 test('mapped gamepad buttons and axis directions use the learned binding, not a hard-coded face index', () => {
@@ -237,7 +304,7 @@ test('remapping swaps collisions and leaves the other offense/defense profile in
   settings.bindPad('offense', 'ACTION_A', { kind: 'axis', index: 2, sign: 1 });
   const pads = useControlSettingsStore.getState().profile.offense.gamepad;
   assert.deepEqual(pads.ACTION_A, { kind: 'axis', index: 2, sign: 1 });
-  assert.deepEqual(pads.SKILL_RIGHT, { kind: 'button', index: 2 });
+  assert.equal(pads.SKILL_RIGHT, null, 'a button cannot be swapped into a stick direction');
   assert.equal(pads.HAND_RIGHT, null);
   settings.bindTouch('offense', 'ACTION_A', 'triangle');
   const mobile = useControlSettingsStore.getState().profile.offense.mobile;
@@ -252,6 +319,7 @@ test('stored profiles roundtrip learned controls and discard malformed bindings'
   const profile = createDefaultProfile();
   profile.offense.keyboard.ACTION_A = ['KeyF'];
   profile.defense.gamepad.ACTION_A = { kind: 'axis', index: 3, sign: -1 };
+  profile.defense.gamepad.SKILL_UP = null;
   profile.offense.mobile.cross = 'ACTION_A';
   assert.deepEqual(restoreProfile(JSON.parse(JSON.stringify(profile))), profile);
   const restored = restoreProfile({

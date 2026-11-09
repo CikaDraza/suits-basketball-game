@@ -4,6 +4,7 @@ import {
   TOUCH_SLOTS,
   createDefaultProfile,
   restoreProfile,
+  acceptsPadBinding,
   type ControlAction,
   type ControlContext,
   type ControlProfile,
@@ -59,15 +60,17 @@ export const useControlSettingsStore = create<Settings>((set, get) => {
           }
         keys[action] = [code];
       }),
-    bindPad: (context, action, binding) =>
+    bindPad: (context, action, binding) => {
+      if (!acceptsPadBinding(action, binding)) return;
       update((p) => {
         const map = p[context].gamepad,
           old = map[action];
         for (const other of CONTROL_ACTIONS)
           if (other !== action && JSON.stringify(map[other]) === JSON.stringify(binding))
-            map[other] = old;
+            map[other] = acceptsPadBinding(other, old) ? old : null;
         map[action] = binding;
-      }),
+      });
+    },
     bindTouch: (context, action, slot) =>
       update((p) => {
         const map = p[context].mobile,

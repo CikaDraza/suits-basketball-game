@@ -32,14 +32,14 @@ async function request(page: Page, owner: 0 | 1 = 0) {
   await expect.poll(() => flight(page)).not.toBeNull();
 }
 
-test('inbound still waits 5+5, then violates to the same left sideline; early Q is not queued into the window', async ({
+test('inbound still waits 5+5, then violates to the same left sideline; early E is not queued into the window', async ({
   page,
 }) => {
   await bootGame(page);
   await page.bringToFront();
   await page.locator('canvas').click({ position: { x: 10, y: 10 } });
   await page.evaluate(() => window.__TEST__!.reset(42, 'inbound'));
-  await page.keyboard.press('q');
+  await page.keyboard.press('e');
   await expect.poll(async () => (await snapshot(page)).inbound).toMatchObject({ stage: 'pass' });
   expect((await snapshot(page)).passes).toBe(0);
   await expect.poll(async () => (await snapshot(page)).violations).toBe(1);
@@ -60,6 +60,8 @@ test('an open lane uses a physical chest pass aimed at current hands after the r
   // Move after the five-second positioning stage: the aim must not be a cached spawn/angle.
   await page.evaluate(() => window.__TEST__!.teleport('player', [7, 0.95, 1]));
   await page.keyboard.press('q');
+  expect((await snapshot(page)).passes).toBe(0);
+  await page.keyboard.press('e');
   await expect.poll(() => flight(page)).not.toBeNull();
   const pass = (await flight(page))!;
   expect(pass.type).toBe('chest');

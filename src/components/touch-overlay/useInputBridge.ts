@@ -22,6 +22,7 @@ export function useInputBridge() {
     const actions = {
       ACTION_A: { keyboard: false, touch: false, external: false },
       ACTION_B: { keyboard: false, touch: false, external: false },
+      INBOUND: { keyboard: false, touch: false, external: false },
       HAND_LEFT: { keyboard: false, touch: false, external: false },
       HAND_RIGHT: { keyboard: false, touch: false, external: false },
     };
@@ -50,13 +51,13 @@ export function useInputBridge() {
       if (phase === 'down') enableAudio();
       const game = useGameStore.getState();
       if (
-        action === 'ACTION_B' &&
+        action === 'INBOUND' &&
         phase === 'down' &&
         game.phase === 'INBOUND_PHASE' &&
         game.inbound?.owner === 0
       ) {
         // Preserve a short button/key tap as an intent until the next physics step.
-        game.requestInboundAction();
+        game.requestInboundPass();
         return;
       }
       if (action === 'MOVE' && axis && Number.isFinite(axis.x) && Number.isFinite(axis.y)) {
@@ -74,6 +75,7 @@ export function useInputBridge() {
       if (
         action === 'ACTION_A' ||
         action === 'ACTION_B' ||
+        action === 'INBOUND' ||
         action === 'HAND_LEFT' ||
         action === 'HAND_RIGHT'
       ) {
@@ -84,9 +86,11 @@ export function useInputBridge() {
             ? 'actionA'
             : action === 'ACTION_B'
               ? 'actionB'
-              : action === 'HAND_LEFT'
-                ? 'handLeft'
-                : 'handRight',
+              : action === 'INBOUND'
+                ? 'inbound'
+                : action === 'HAND_LEFT'
+                  ? 'handLeft'
+                  : 'handRight',
           Object.values(sources).some(Boolean),
         );
       }

@@ -60,7 +60,7 @@ test('the event keeps the activation orientation while waiting for physics', () 
   sample({ vector: { x: 0, z: -1 } });
   sample({ vector: { x: 0, z: -1 }, facing: facing + Math.PI });
   sample({ facing: facing + Math.PI });
-  assert.deepEqual(buffer.take(), { hand: -1, facing, sequence: 1 });
+  assert.deepEqual(buffer.take(), { kind: 'side', hand: -1, facing, sequence: 1 });
 });
 
 test('a committed crossover rejects new input and never replays it on completion', () => {
@@ -92,7 +92,7 @@ test('only the latest request is retained before any crossover has committed', (
   sample({ vector: { x: 0, z: 1 } });
   assert.equal(buffer.debug.activations, 2);
   assert.equal(buffer.debug.pending, 1);
-  assert.deepEqual(buffer.take(), { hand: 1, facing, sequence: 2 });
+  assert.deepEqual(buffer.take(), { kind: 'side', hand: 1, facing, sequence: 2 });
   assert.equal(buffer.take(), null, 'the older uncommitted request was replaced');
 });
 
@@ -174,4 +174,87 @@ test('direct hand buttons also require a neutral sample after start, pause, rese
       `${lifecycle}: neutral release rearms the direct command`,
     );
   }
+});
+
+test('front and rear flicks stay distinct from anatomical side requests', () => {
+  const { buffer, sample } = fixture();
+  sample({ vector: { x: 1, z: 0 }, time: 1 });
+  assert.equal(buffer.take()?.kind, 'front');
+  sample({ time: 1.05 });
+  sample({ vector: { x: -1, z: 0 }, time: 1.1 });
+  const rear = buffer.take();
+  assert.equal(rear?.kind, 'behind');
+  assert.equal(rear?.double, false);
+  assert.equal(rear?.facing, facing);
+});
+
+test('a quick second rear flick upgrades an active behind-back cross and survives render release', () => {
+  const { buffer, sample } = fixture();
+  sample({ vector: { x: -1, z: 0 }, time: 1 });
+  assert.equal(buffer.take()?.double, false);
+  sample({ crossing: true, crossingKind: 'behind', time: 1.05 });
+  sample({ vector: { x: -1, z: 0 }, crossing: true, crossingKind: 'behind', time: 1.2 });
+  sample({ crossing: true, crossingKind: 'behind', time: 1.21 });
+  assert.equal(buffer.debug.pending, 1);
+  const upgrade = buffer.take();
+  assert.equal(upgrade?.kind, 'behind');
+  assert.equal(upgrade?.double, true);
+  assert.equal(buffer.debug.rejected, 0);
+  assert.equal(buffer.take(), null);
+});
+
+test('two rear flicks before the next physics tick retain the full double combination', () => {
+  const { buffer, sample } = fixture();
+  sample({ vector: { x: -1, z: 0 }, time: 1 });
+  sample({ time: 1.05 });
+  sample({ vector: { x: -1, z: 0 }, time: 1.1 });
+  assert.equal(buffer.debug.pending, 1);
+  assert.equal(buffer.take()?.double, true);
+  assert.equal(buffer.take(), null);
+});
+
+test('holding rear or crossing without returning through neutral never produces a double', () => {
+  const { buffer, sample } = fixture();
+  sample({ vector: { x: -1, z: 0 }, time: 1 });
+  assert.equal(buffer.take()?.double, false);
+  for (const time of [1.05, 1.1, 1.2]) {
+    sample({ vector: { x: -1, z: 0 }, time, crossing: true, crossingKind: 'behind' });
+    assert.equal(buffer.take(), null);
+  }
+  assert.equal(buffer.debug.activations, 1);
+});
+
+test('a late rear flick and other directions cannot interrupt an active cross', () => {
+  for (const [vector, time, crossingKind] of [
+    [{ x: -1, z: 0 }, 1.4, 'behind'],
+    [{ x: 1, z: 0 }, 1.1, 'behind'],
+    [{ x: 0, z: -1 }, 1.1, 'behind'],
+    [{ x: -1, z: 0 }, 1.1, 'front'],
+    [{ x: -1, z: 0 }, 1.1, 'side'],
+  ] as const) {
+    const { buffer, sample } = fixture();
+    sample({ vector: { x: -1, z: 0 }, time: 1 });
+    buffer.take();
+    sample({ crossing: true, crossingKind, time: 1.05 });
+    sample({ vector, crossing: true, crossingKind, time });
+    assert.equal(buffer.take(), null, `${crossingKind} ${JSON.stringify(vector)} @${time}`);
+    assert.equal(buffer.debug.rejected, 1);
+  }
+});
+
+test('the rear combination window is configurable and does not survive possession loss or reset', () => {
+  const buffer = createDribbleSkillBuffer(config.camera.inputAngle, pitchScale, 0.15);
+  const sample = (partial: Partial<Sample>) => buffer.sample({ ...base, ...partial });
+  sample({ time: 1 });
+  sample({ vector: { x: -1, z: 0 }, time: 1 });
+  buffer.take();
+  sample({ time: 1.05 });
+  sample({ vector: { x: -1, z: 0 }, time: 1.2 });
+  assert.equal(buffer.take()?.double, false, 'outside configured window starts a new single');
+  sample({ eligible: false, time: 1.21 });
+  sample({ vector: { x: -1, z: 0 }, time: 1.22 });
+  assert.equal(buffer.take()?.double, false, 'lost possession clears the first flick');
+  sample({ time: 0 });
+  sample({ vector: { x: -1, z: 0 }, time: 0.1 });
+  assert.equal(buffer.take()?.double, false, 'rewinding simulation clears the previous flick');
 });

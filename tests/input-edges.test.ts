@@ -11,12 +11,16 @@ test('short action and hand taps survive until the simulation consumes their edg
   input.setAction('handRight', false);
   input.setAction('actionB', true);
   input.setAction('actionB', false);
+  input.setAction('inbound', true);
+  input.setAction('inbound', false);
   assert.equal(useInputStore.getState().handRight, false);
   assert.deepEqual(takeButtonEdges(), [
     { action: 'handRight', active: true },
     { action: 'handRight', active: false },
     { action: 'actionB', active: true },
     { action: 'actionB', active: false },
+    { action: 'inbound', active: true },
+    { action: 'inbound', active: false },
   ]);
   assert.deepEqual(takeButtonEdges(), [], 'edges have one consumer and drain once');
 });
@@ -27,6 +31,7 @@ test('flushing clears movement, held actions and queued taps while invalidating 
   input.setAxis(0.5, -0.5);
   input.setAction('handLeft', true);
   input.setAction('actionA', true);
+  input.setAction('inbound', true);
   input.flush();
   assert.equal(getInputResetVersion(), version + 1);
   const state = useInputStore.getState();
@@ -34,5 +39,6 @@ test('flushing clears movement, held actions and queued taps while invalidating 
   assert.equal(state.moveZ, 0);
   assert.equal(state.handLeft, false);
   assert.equal(state.actionA, false);
+  assert.equal(state.inbound, false);
   assert.deepEqual(takeButtonEdges(), []);
 });

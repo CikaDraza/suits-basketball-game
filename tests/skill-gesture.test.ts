@@ -53,10 +53,9 @@ function lockedCamera() {
   return camera;
 }
 
-test('all cardinal/diagonal gestures match the anatomical hand projected into the locked camera plane', () => {
+test('all cardinal/diagonal gestures resolve body-local side, front and rear through the camera plane', () => {
   const camera = lockedCamera();
-  let accepted = 0,
-    ambiguous = 0;
+  const kinds = { side: 0, front: 0, behind: 0 };
   for (const legend of ['shaq', 'chuck'])
     for (const [name, facing] of orientations)
       for (const [x, z] of directions) {
@@ -64,30 +63,33 @@ test('all cardinal/diagonal gestures match the anatomical hand projected into th
         const visibleRight = new Vector3(-Math.cos(facing), 0, Math.sin(facing)).transformDirection(
           camera.matrixWorldInverse,
         );
-        const dot =
-          (x * visibleRight.x + z * visibleRight.y) /
-          (Math.hypot(x, z) * Math.hypot(visibleRight.x, visibleRight.y));
+        const visibleForward = new Vector3(
+          Math.sin(facing),
+          0,
+          Math.cos(facing),
+        ).transformDirection(camera.matrixWorldInverse);
+        const determinant = visibleRight.x * visibleForward.y - visibleRight.y * visibleForward.x;
+        const side = (x * visibleForward.y - z * visibleForward.x) / determinant;
+        const forward = (visibleRight.x * z - visibleRight.y * x) / determinant;
+        const expected =
+          Math.abs(forward) > Math.abs(side) + 1e-9 ? (forward > 0 ? 'front' : 'behind') : 'side';
         const gesture = createSkillGesture(cam.inputAngle, { verticalScale: pitchScale });
         assert.equal(gesture.sample({ x: 0, z: 0 }, facing), null);
         const command = gesture.sample({ x, z }, facing);
-        const where = `${legend} ${name} stick[${x},${z}] dot=${dot}`;
-        if (Math.abs(dot) <= 0.25) {
-          assert.equal(command, null, `${where}: ambiguous forward/backward must keep hand`);
-          ambiguous++;
-        } else {
-          assert.equal(command?.hand, dot > 0 ? -1 : 1, where);
-          assert.equal(command?.facing, facing, `${where}: snapshot orientation`);
-          accepted++;
-        }
-        // A turn cannot reinterpret either an accepted or an ambiguous held gesture.
+        const where = `${legend} ${name} stick[${x},${z}]`;
+        assert.equal(command?.kind, expected, where);
+        if (expected === 'side') assert.equal(command?.hand, side > 0 ? -1 : 1, where);
+        assert.equal(command?.facing, facing, `${where}: snapshot orientation`);
+        kinds[expected]++;
+        // A turn cannot reinterpret an accepted held gesture.
         assert.equal(
           gesture.sample({ x, z }, facing + Math.PI),
           null,
           `${where}: held during turn`,
         );
       }
-  assert.ok(accepted > 64);
-  assert.ok(ambiguous > 0);
+  for (const [kind, count] of Object.entries(kinds))
+    assert.ok(count >= 16, `${kind} exercised across rotated bodies and stick directions`);
 });
 
 test('the near/bottom gesture chooses the right hand when the player faces screen-right', () => {
@@ -109,8 +111,36 @@ test('pitch compression affects diagonal visible-side interpretation without cha
   yawOnly.sample({ x: 0, z: 0 }, facing);
   const a = actual.sample({ x: 1, z: 1 }, facing);
   const y = yawOnly.sample({ x: 1, z: 1 }, facing);
-  assert.notEqual(a?.hand, y?.hand, 'yaw-only interpretation loses the visible camera plane');
+  assert.equal(a?.kind, 'side');
+  assert.equal(y?.kind, 'front', 'yaw-only interpretation loses the visible camera plane');
   assert.deepEqual(config.camera, cameraBefore);
+});
+
+test('projected anatomical directions keep their meaning at every body and camera orientation', () => {
+  for (const yaw of [0, Math.PI / 3, Math.PI / 2, Math.PI, -Math.PI / 2])
+    for (const scale of [0.2, 0.5, 1])
+      for (let index = 0; index < 8; index++) {
+        const facing = (index * Math.PI) / 4;
+        const view = createMovementTransform(yaw);
+        const axes = [
+          ['side', -1, -Math.cos(facing), Math.sin(facing)],
+          ['side', 1, Math.cos(facing), -Math.sin(facing)],
+          ['front', null, Math.sin(facing), Math.cos(facing)],
+          ['behind', null, -Math.sin(facing), -Math.cos(facing)],
+        ] as const;
+        const gesture = createSkillGesture(cam.inputAngle, { verticalScale: pitchScale });
+        for (const [kind, hand, wx, wz] of axes) {
+          const vector = view.worldToStick(wx, wz);
+          vector.z *= scale;
+          const length = Math.hypot(vector.x, vector.z);
+          vector.x /= length;
+          vector.z /= length;
+          gesture.sample({ x: 0, z: 0 }, facing);
+          const result = gesture.sample(vector, facing, { cameraAngle: yaw, verticalScale: scale });
+          assert.equal(result?.kind, kind, `yaw=${yaw} scale=${scale} facing=${facing}`);
+          if (hand !== null) assert.equal(result?.hand, hand);
+        }
+      }
 });
 
 test('activation/release hysteresis emits once, rearms only through neutral and survives repeated sampling at 20/30/60/120 Hz', () => {
@@ -173,7 +203,7 @@ test('legacy default hand axes migrate to a full camera-relative skill map', () 
   assert.deepEqual(restored.offense.mobile.circle, 'HAND_LEFT');
 });
 
-test('custom legacy hand bindings are preserved and conflicting default skill directions do not double-fire', () => {
+test('custom legacy hand axes migrate to stick directions and retired hand buttons cannot double-fire', () => {
   const restored = restoreProfile({
     offense: {
       gamepad: {
@@ -182,8 +212,9 @@ test('custom legacy hand bindings are preserved and conflicting default skill di
       },
     },
   });
-  assert.deepEqual(restored.offense.gamepad.HAND_LEFT, { kind: 'axis', index: 3, sign: -1 });
-  assert.deepEqual(restored.offense.gamepad.HAND_RIGHT, { kind: 'button', index: 7 });
+  assert.equal(restored.offense.gamepad.HAND_LEFT, null);
+  assert.equal(restored.offense.gamepad.HAND_RIGHT, null);
+  assert.deepEqual(restored.offense.gamepad.SKILL_LEFT, { kind: 'axis', index: 3, sign: -1 });
   assert.equal(restored.offense.gamepad.SKILL_UP, null);
   assert.deepEqual(restored.offense.gamepad.SKILL_DOWN, { kind: 'axis', index: 3, sign: 1 });
   assert.deepEqual(restoreProfile(JSON.parse(JSON.stringify(restored))), restored);

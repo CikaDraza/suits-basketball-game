@@ -14,7 +14,7 @@ const helpSections = [
   {
     title: '03 / DIRTY DEFENSE',
     description:
-      'Hold □ / R to stand tall and contest. Double-tap △ / Q to flop. Your body becomes a trip trap. Mash Q, R or flick the stick to get up faster.',
+      'Hold □ / R to contest. On defense, the right stick opens the left/right arm with the palm forward. Forward raises both arms; two quick forward flicks wave them. Hold back to check with both forearms; two quick back flicks shove the opponent in front within reach. Return to neutral between flicks. Double-tap △ / Q to flop. Mash Q, R or flick the stick to get up faster.',
   },
   {
     title: '04 / KNOW WHEN TO REST',
@@ -24,12 +24,12 @@ const helpSections = [
   {
     title: `05 / NO FOULS. FIRST TO ${config.score.winTarget}.`,
     description:
-      'One point in close, two beyond the arc. The scorer keeps possession. Every start and restart uses the left sideline. Out of bounds awards the opponent of the last player to touch the ball. Q seals during positioning and passes immediately in the pass window.',
+      'One point in close, two beyond the arc. The scorer keeps possession. Every start and restart uses the left sideline. Out of bounds awards the opponent of the last player to touch the ball. Q / Triangle seals; Cross / A / E passes in the inbound window.',
   },
   {
     title: '06 / LOCAL DUEL',
     description:
-      'Default controls: left stick moves. Aim the right stick toward the visible hand you want, then return to neutral before another crossover. Z/C select anatomical left/right on keyboard. Triangle posts, Square shoots. Change and save bindings in timeout → Controls. A second active controller takes over CPU.',
+      'Left stick moves. The right stick follows the body through the camera: ball side gives two quick bounces, opposite side crosses over, forward chains three quick crossovers, back crosses behind the back. Two quick back flicks chain three behind-back transfers. Return to neutral between flicks. Full left-stick movement gives these moves a 90% fumble risk. Z/C select hands on keyboard. Change bindings in timeout → Controls. A second active controller takes over CPU.',
   },
 ];
 

@@ -12,15 +12,22 @@ type Point = { x: number; y: number; z: number };
 const state = (page: Page) => page.evaluate(() => window.__TEST__!.getState());
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
-async function mockController(page: Page, calibrated = true, neutral = [0, 0, 0, 0, -1, -1]) {
+async function mockController(
+  page: Page,
+  calibrated = true,
+  neutral = [0, 0, 0, 0, -1, -1],
+  inboundButton?: number,
+) {
   await page.addInitScript(
-    ({ calibrated, defaults, neutral }) => {
+    ({ calibrated, defaults, neutral, inboundButton }) => {
       // Sparse hardware index plus nonstandard trigger axes resting at -1.
       window.__mockPad = { axes: [...neutral], pressed: [], connected: true };
       if (calibrated) {
         const saved = JSON.parse(localStorage.getItem('suits.controls.v1') ?? 'null') ?? defaults;
         saved.padNeutral ??= {};
         saved.padNeutral[JSON.stringify(['SUITS test controller', '', neutral.length])] = neutral;
+        if (inboundButton !== undefined)
+          saved.offense.gamepad.INBOUND = { kind: 'button', index: inboundButton };
         localStorage.setItem('suits.controls.v1', JSON.stringify(saved));
       }
       Object.defineProperty(navigator, 'getGamepads', {
@@ -45,7 +52,7 @@ async function mockController(page: Page, calibrated = true, neutral = [0, 0, 0,
         },
       });
     },
-    { calibrated, defaults: createDefaultProfile(), neutral },
+    { calibrated, defaults: createDefaultProfile(), neutral, inboundButton },
   );
 }
 
@@ -54,21 +61,24 @@ async function advance(page: Page, seconds = 0.3) {
   await expect.poll(async () => (await state(page)).time).toBeGreaterThan(from + seconds);
 }
 
-async function selectVisibleHand(page: Page, hand: 1 | -1) {
-  await page.evaluate((hand) => {
-    const p = window.__TEST__!.getState().player as { x: number; z: number; angle: number };
-    const center = window.__TEST__!.project!([p.x, 1.3, p.z]);
-    const side = window.__TEST__!.project!([
-      p.x + hand * Math.cos(p.angle),
-      1.3,
-      p.z - hand * Math.sin(p.angle),
-    ]);
-    const dx = side.x - center.x,
-      dy = side.y - center.y,
-      length = Math.hypot(dx, dy);
-    window.__mockPad.axes[2] = dx / length;
-    window.__mockPad.axes[3] = dy / length;
-  }, hand);
+async function selectVisibleHand(page: Page, hand: 1 | -1, horizontal = 2, vertical = 3) {
+  await page.evaluate(
+    ({ hand, horizontal, vertical }) => {
+      const p = window.__TEST__!.getState().player as { x: number; z: number; angle: number };
+      const center = window.__TEST__!.project!([p.x, 1.3, p.z]);
+      const side = window.__TEST__!.project!([
+        p.x + hand * Math.cos(p.angle),
+        1.3,
+        p.z - hand * Math.sin(p.angle),
+      ]);
+      const dx = side.x - center.x,
+        dy = side.y - center.y,
+        length = Math.hypot(dx, dy);
+      window.__mockPad.axes[horizontal] = dx / length;
+      window.__mockPad.axes[vertical] = dy / length;
+    },
+    { hand, horizontal, vertical },
+  );
 }
 
 async function openControls(page: Page) {
@@ -81,6 +91,41 @@ async function savedProfile(page: Page) {
   return page.evaluate(
     () => JSON.parse(localStorage.getItem('suits.controls.v1') ?? 'null') as ControlProfile | null,
   );
+}
+
+for (const inboundButton of [0, 7]) {
+  test(`inbound button ${inboundButton} passes once while triangle remains a stance command`, async ({
+    page,
+  }) => {
+    await mockController(page, true, [0, 0, 0, 0, -1, -1], inboundButton);
+    await bootGame(page);
+    await page.bringToFront();
+    await page.locator('canvas').click({ position: { x: 10, y: 10 } });
+    await page.evaluate(async () => {
+      await window.__TEST__!.reset(42, 'inbound');
+      window.__TEST__!.teleport('player', [5, 0.95, 1.5]);
+      window.__TEST__!.teleport('opponent', [2, 0.95, -2]);
+    });
+    await expect.poll(async () => (await state(page)).inbound).toMatchObject({ stage: 'pass' });
+    await page.evaluate(() => (window.__mockPad.pressed = [3]));
+    await expect.poll(async () => (await state(page)).player).toMatchObject({ mode: 'post' });
+    await advance(page, 0.2);
+    expect((await state(page)).passes).toBe(0);
+    await page.evaluate(() => (window.__mockPad.pressed = []));
+    await advance(page, 0.1);
+    if (inboundButton !== 0) {
+      await page.evaluate(() => (window.__mockPad.pressed = [0]));
+      await advance(page, 0.1);
+      expect((await state(page)).passes).toBe(0);
+      await page.evaluate(() => (window.__mockPad.pressed = []));
+      await advance(page, 0.1);
+    }
+    await page.evaluate((index) => (window.__mockPad.pressed = [index]), inboundButton);
+    await expect.poll(async () => (await state(page)).passes).toBe(1);
+    await advance(page, 0.4);
+    expect((await state(page)).passes).toBe(1);
+    await page.evaluate(() => (window.__mockPad.pressed = []));
+  });
 }
 
 for (const legend of ['shaq', 'chuck'] as const) {
@@ -186,12 +231,19 @@ test('offense/defense controls learn keyboard, gamepad and mobile bindings, pers
       return saved.padNeutral[JSON.stringify(['SUITS test controller', '', 6])];
     })
     .toEqual([0, 0, -1, 0, 0, -1]);
-  await page.locator('[data-control-action="HAND_RIGHT"]').click();
+  await expect(page.locator('[data-control-action="HAND_LEFT"]')).toHaveCount(0);
+  await expect(page.locator('[data-control-action="HAND_RIGHT"]')).toHaveCount(0);
+  await expect(page.locator('[data-control-action="SKILL_LEFT"]')).toContainText(
+    'Desna palica levo',
+  );
+  await expect(page.locator('[data-control-action="SKILL_LEFT"]')).not.toContainText('kamera');
+  await expect(page.locator('[data-control-action="INBOUND"]')).toContainText('✕ / A');
+  await page.locator('[data-control-action="INBOUND"]').click();
   // Give the capture loop a neutral sample before pressing the learned button.
   await page.waitForTimeout(100);
   await page.evaluate(() => (window.__mockPad.pressed = [7]));
   await expect
-    .poll(async () => (await savedProfile(page))?.offense.gamepad.HAND_RIGHT)
+    .poll(async () => (await savedProfile(page))?.offense.gamepad.INBOUND)
     .toEqual({
       kind: 'button',
       index: 7,
@@ -201,13 +253,37 @@ test('offense/defense controls learn keyboard, gamepad and mobile bindings, pers
   await expect(page.locator('.controls-feedback[role="status"]')).toContainText(
     'Promena je sačuvana.',
   );
-  await page.locator('[data-control-action="HAND_LEFT"]').click();
+  await page.locator('[data-control-action="SKILL_LEFT"]').click();
   await page.waitForTimeout(100);
-  await page.evaluate(() => (window.__mockPad.axes[3] = -1));
+  await page.evaluate(() => (window.__mockPad.pressed = [5]));
+  await page.waitForTimeout(100);
+  expect((await savedProfile(page))?.offense.gamepad.SKILL_LEFT).toEqual({
+    kind: 'axis',
+    index: 2,
+    sign: -1,
+  });
+  await expect(page.locator('[data-control-action="SKILL_LEFT"]')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.evaluate(() => {
+    window.__mockPad.pressed = [];
+    window.__mockPad.axes[4] = -1;
+  });
   await expect
-    .poll(async () => (await savedProfile(page))?.offense.gamepad.HAND_LEFT)
-    .toEqual({ kind: 'axis', index: 3, sign: -1 });
-  await page.evaluate(() => (window.__mockPad.axes[3] = 0));
+    .poll(async () => (await savedProfile(page))?.offense.gamepad.SKILL_LEFT)
+    .toEqual({ kind: 'axis', index: 4, sign: -1 });
+  await page.evaluate(() => (window.__mockPad.axes[4] = 0));
+  await expect(page.locator('.controls-feedback[role="status"]')).toContainText(
+    'Promena je sačuvana.',
+  );
+  await page.locator('[data-control-action="SKILL_RIGHT"]').click();
+  await page.waitForTimeout(100);
+  await page.evaluate(() => (window.__mockPad.axes[4] = 1));
+  await expect
+    .poll(async () => (await savedProfile(page))?.offense.gamepad.SKILL_RIGHT)
+    .toEqual({ kind: 'axis', index: 4, sign: 1 });
+  await page.evaluate(() => (window.__mockPad.axes[4] = 0));
   await expect(page.locator('.controls-feedback[role="status"]')).toContainText(
     'Promena je sačuvana.',
   );
@@ -260,20 +336,24 @@ test('offense/defense controls learn keyboard, gamepad and mobile bindings, pers
     .poll(async () => ((await state(page)).player as { handling: string }).handling)
     .toBe('dribble');
   expect(((await state(page)).player as { hand: number }).hand).toBe(1);
-  await page.evaluate(() => (window.__mockPad.pressed = [7]));
+  await selectVisibleHand(page, -1, 4, 3);
   await expect
     .poll(async () => ((await state(page)).ballControl as { hand: number }).hand)
     .toBe(-1);
-  await page.evaluate(() => (window.__mockPad.pressed = []));
+  await page.evaluate(() => {
+    window.__mockPad.axes[4] = window.__mockPad.axes[3] = 0;
+  });
   // Ownership transfers at floor contact; the committed crossover continues until
   // the next top. Commands inside it are deliberately rejected, never replayed.
   await expect
     .poll(async () => ((await state(page)).ballControl as { crossing: boolean }).crossing)
     .toBe(false);
   await advance(page, 0.18);
-  await page.evaluate(() => (window.__mockPad.axes[3] = -1));
+  await selectVisibleHand(page, 1, 4, 3);
   await expect.poll(async () => ((await state(page)).ballControl as { hand: number }).hand).toBe(1);
-  await page.evaluate(() => (window.__mockPad.axes[3] = 0));
+  await page.evaluate(() => {
+    window.__mockPad.axes[4] = window.__mockPad.axes[3] = 0;
+  });
   await page.evaluate(() => (window.__mockPad.pressed = [8]));
   await expect.poll(async () => (await state(page)).screen).toBe('paused');
   await page.evaluate(() => (window.__mockPad.pressed = []));

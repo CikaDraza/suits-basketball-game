@@ -59,13 +59,32 @@ export function createHandContactPose(model: Object3D, legend: Legend) {
         const active = (controlled && (!dribbling || state.hand === sign)) || incoming;
         const pose = memory[i];
         const role = active ? (dribbling && controlled ? 'dribble' : 'hold') : 'none';
-        weights[i] +=
-          (Number(active) - weights[i]) * (1 - Math.exp(-config.ballControl.armBlendRate * dt));
+        const handBlendRate =
+          config.ballControl.armBlendRate *
+          (state.skill?.started ? config.ballControl.period / config.ballControl.skills.period : 1);
+        weights[i] += (Number(active) - weights[i]) * (1 - Math.exp(-handBlendRate * dt));
         if (active) {
           if (dribbling && controlled) {
             const shape = state.shape ?? config.ballControl[legend];
             const profile = state.shape ?? config.animation.dribbleHand[legend];
-            sampleDribbleHandMotion(legend, state.phase, motion, state.shape);
+            let presentationPhase = state.phase;
+            if (state.skill?.started) {
+              // Rapier's displayed ball can lag the authoritative phase by one
+              // substep. At quick speed, mixing that old height with the new
+              // recovery pose pulls the palm below its reachable envelope.
+              const fall = Math.sqrt(
+                Math.max(
+                  0,
+                  Math.min(
+                    1,
+                    (shape.dribbleTop - (ball.y - floor.y)) /
+                      (shape.dribbleTop - config.ball.radius),
+                  ),
+                ),
+              );
+              presentationPhase = state.phase < 0.5 ? fall * 0.5 : 1 - fall * 0.5;
+            }
+            sampleDribbleHandMotion(legend, presentationPhase, motion, state.shape);
             target
               .copy(floor)
               .addScaledVector(left, sign * shape.hipSide)
@@ -78,7 +97,7 @@ export function createHandContactPose(model: Object3D, legend: Legend) {
             // Preserve the existing catch/entry blend. Only the presentation offset
             // is changed; ball position and velocity retain their single owner.
             const idealBallY =
-              floor.y + dribbleHeight(state.phase, shape.dribbleTop, config.ball.radius);
+              floor.y + dribbleHeight(presentationPhase, shape.dribbleTop, config.ball.radius);
             target.y = floor.y + motion.height + (ball.y - idealBallY) * contact;
             normal.copy(forward).multiplyScalar(Math.sin(motion.pitch));
             normal.y = -Math.cos(motion.pitch);
