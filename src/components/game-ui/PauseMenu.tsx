@@ -3,7 +3,7 @@ import { PORTRAIT_PATHS } from '../../game/assets/manifest';
 import { config, type Legend } from '../../game/data/gameConfig';
 import { useGameStore } from '../../game/state/gameStore';
 import { HelpScreen } from './HelpScreen';
-import { JabaliBranding } from './JabaliBranding';
+import { DmdBranding } from './DmdBranding';
 import { ControlsSettings } from './ControlsSettings';
 
 const legends: readonly Legend[] = ['shaq', 'chuck'];
@@ -84,9 +84,9 @@ export function PauseMenu() {
         </button>
         <SoundToggle />
       </div>
-      <div className="brand-footer">
-        <JabaliBranding />
-      </div>
+      <footer className="brand-footer">
+        <DmdBranding />
+      </footer>
     </div>
   );
 }
