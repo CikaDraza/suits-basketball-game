@@ -1,3 +1,4 @@
+import { motionRecorder } from '../diagnostics/recorder';
 import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Vector3 } from 'three';
@@ -26,6 +27,16 @@ export function useDuelTestSeam(): void {
     const renderedBall = new Vector3();
     const seam = extendTestSeam({
       ready: true,
+      ...(import.meta.env.DEV
+        ? {
+            diagnostics: {
+              start: () => motionRecorder.start(),
+              stop: () => motionRecorder.stop(),
+              export: (recentOnly = false) => motionRecorder.export(recentOnly),
+              status: () => motionRecorder.status(),
+            },
+          }
+        : {}),
       getRightStickDebug: (slot) => structuredClone(rightStickDebug[slot]),
       getLocomotion: (slot) => structuredClone(locomotionDebug[slot]),
       getHandContacts: (slot) =>

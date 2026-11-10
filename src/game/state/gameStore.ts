@@ -1,3 +1,4 @@
+import { motionRecorder } from '../diagnostics/recorder';
 import { create } from 'zustand';
 import { config, level, type Legend } from '../data/gameConfig';
 import { INITIAL_MESSAGE } from '../simulation/types';
@@ -110,6 +111,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   requestInboundAction: (receiver = 0) => set((state) => inboundRequest(state, receiver, true)),
   setScreen: (screen) => {
     if (get().screen === screen) return;
+    if (import.meta.env?.DEV)
+      motionRecorder.event('session.screen', { from: get().screen, to: screen });
     useInputStore.getState().flush();
     set({ screen, inboundPassRequest: null });
   },

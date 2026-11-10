@@ -1,3 +1,4 @@
+import type { motionRecorder } from '../diagnostics/recorder';
 import type { LocomotionSnapshot } from '../entities/locomotionDebug';
 import { useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
@@ -8,6 +9,12 @@ import type { RightStickSnapshot } from '../input/rightStickDebug';
 
 export type TestSeam = {
   ready: boolean;
+  diagnostics?: {
+    start: () => void;
+    stop: () => void;
+    export: (recentOnly?: boolean) => ReturnType<typeof motionRecorder.export>;
+    status: typeof motionRecorder.status;
+  };
   getRightStickDebug?: (slot: 0 | 1) => RightStickSnapshot | null;
   requestInboundPass?: (receiver?: 0 | 1) => void;
   getCharacterPose?: (slot: 0 | 1) => CharacterPoseSnapshot | null;

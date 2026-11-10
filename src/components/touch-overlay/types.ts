@@ -15,6 +15,8 @@ export interface GameInputEvent {
   axis?: { x: number; y: number };
   value?: number;
   source?: 'keyboard' | 'touch';
+  /** Physical on-screen control name for development input tracing. */
+  control?: string;
 }
 
 export interface TouchOverlayConfig {

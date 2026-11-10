@@ -1,3 +1,4 @@
+import { motionAudit } from '../diagnostics/motionAudit';
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
@@ -1041,6 +1042,39 @@ export function Character({ index, legend }: CharacterProps) {
     st.face.gazeX = st.gx;
     st.face.gazeY = st.gy;
     face(st.face);
+    if (import.meta.env.DEV)
+      motionAudit.pose(
+        index,
+        {
+          mode: p.mode,
+          phase: {
+            remaining: p.timer,
+            push: pushAge / config.defense.hands.pushDuration,
+            ball: duel.ballControl.phase,
+          },
+          defense: defensiveArmsEnabled ? defensiveHands : 'none',
+          locomotion: locomotionDebug[index],
+          layers: {
+            base: 'procedural-fk',
+            legs:
+              walk && walk.debug.weight > 0
+                ? `imported-walk:${walk.debug.clip}`
+                : 'procedural-gait',
+            feet: 'foot-grounding',
+            torso: 'procedural-posture',
+            arms:
+              defensiveArmsEnabled && defenseArms.active
+                ? 'defensive-arm-ik'
+                : controlled || incoming
+                  ? 'ball-hand-ik'
+                  : 'procedural-fk',
+            head: 'procedural-look',
+          },
+        },
+        rig.bones,
+        defenseArms,
+        hands,
+      );
   }, -50);
 
   return (

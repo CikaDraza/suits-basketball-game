@@ -62,3 +62,94 @@
   margin: 8px 0 0;
   color: #aebdca;
 }
+
+.right-stick-debug-panel {
+  width: min(370px, calc(100cqw - 24px));
+  max-height: calc(100cqh - 150px);
+}
+.right-stick-debug-panel h2 {
+  font: bold 13px/1.4 monospace;
+  color: #ffbd69;
+  margin: 0 0 8px;
+}
+.motion-tabs,
+.motion-audit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0;
+}
+.motion-tabs button[aria-pressed='true'] {
+  border-color: #ffbd69;
+  color: #ffbd69;
+}
+.motion-audit-toolbar button {
+  padding: 7px;
+  min-height: 32px;
+}
+.motion-audit button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.motion-audit h3 {
+  font: bold 11px/1.4 monospace;
+  color: #ffbd69;
+  margin: 14px 0 6px;
+}
+.motion-audit .motion-recording {
+  color: #ff8585;
+}
+.motion-timeline {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.motion-timeline li {
+  padding: 7px 0;
+  border-bottom: 1px solid #394957;
+}
+.motion-timeline span,
+.motion-timeline b,
+.motion-timeline em {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.motion-timeline span {
+  color: #aebdca;
+}
+.motion-timeline em {
+  color: #ffbd69;
+  font-style: normal;
+}
+.motion-timeline .motion-rejected {
+  color: #ff9999;
+}
+.right-stick-debug button:focus-visible,
+.right-stick-debug select:focus-visible {
+  outline: 2px solid #ffbd69;
+  outline-offset: 2px;
+}
+.motion-timeline pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+  font: inherit;
+}
+.motion-timeline summary {
+  color: #aebdca;
+  cursor: pointer;
+}
+
+/* Keep the existing touch controls reachable while auditing live play. */
+.right-stick-debug-panel {
+  max-height: calc(100cqh - 330px);
+}
+@media (max-height: 520px) {
+  .right-stick-debug {
+    top: 52px;
+  }
+  .right-stick-debug-panel {
+    max-height: calc(100cqh - 290px);
+  }
+}

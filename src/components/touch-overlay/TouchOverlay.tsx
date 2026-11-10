@@ -42,7 +42,7 @@ function MappedButton({
   readonly context: ControlContext;
   readonly enabled: boolean;
 }) {
-  const events = useActionButton(action ?? 'ACTION_A');
+  const events = useActionButton(action ?? 'ACTION_A', { control: slot });
   const description =
     action === 'ACTION_A'
       ? 'shoot / contest'
