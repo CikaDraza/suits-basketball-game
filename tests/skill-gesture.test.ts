@@ -60,25 +60,28 @@ test('all cardinal/diagonal gestures resolve body-local side, front and rear thr
     for (const [name, facing] of orientations)
       for (const [x, z] of directions) {
         // Independent Three camera-space projection, not the skill helper formula.
-        const visibleRight = new Vector3(-Math.cos(facing), 0, Math.sin(facing)).transformDirection(
-          camera.matrixWorldInverse,
-        );
         const visibleForward = new Vector3(
           Math.sin(facing),
           0,
           Math.cos(facing),
         ).transformDirection(camera.matrixWorldInverse);
-        const determinant = visibleRight.x * visibleForward.y - visibleRight.y * visibleForward.x;
-        const side = (x * visibleForward.y - z * visibleForward.x) / determinant;
-        const forward = (visibleRight.x * z - visibleRight.y * x) / determinant;
+        const relativeAngle = Math.atan2(
+          Math.sin(Math.atan2(z, x) - Math.atan2(visibleForward.y, visibleForward.x)),
+          Math.cos(Math.atan2(z, x) - Math.atan2(visibleForward.y, visibleForward.x)),
+        );
+        const absolute = Math.abs(relativeAngle);
         const expected =
-          Math.abs(forward) > Math.abs(side) + 1e-9 ? (forward > 0 ? 'front' : 'behind') : 'side';
+          absolute < Math.PI / 4 - 1e-9
+            ? 'front'
+            : absolute > (Math.PI * 3) / 4 + 1e-9
+              ? 'behind'
+              : 'side';
         const gesture = createSkillGesture(cam.inputAngle, { verticalScale: pitchScale });
         assert.equal(gesture.sample({ x: 0, z: 0 }, facing), null);
         const command = gesture.sample({ x, z }, facing);
         const where = `${legend} ${name} stick[${x},${z}]`;
         assert.equal(command?.kind, expected, where);
-        if (expected === 'side') assert.equal(command?.hand, side > 0 ? -1 : 1, where);
+        if (expected === 'side') assert.equal(command?.hand, relativeAngle > 0 ? 1 : -1, where);
         assert.equal(command?.facing, facing, `${where}: snapshot orientation`);
         kinds[expected]++;
         // A turn cannot reinterpret an accepted held gesture.
@@ -101,43 +104,55 @@ test('the near/bottom gesture chooses the right hand when the player faces scree
   assert.equal(gesture.sample({ x: 0, z: 1 }, facing)?.hand, 1);
 });
 
-test('pitch compression affects diagonal visible-side interpretation without changing the camera', () => {
+test('pitch projects the body heading without stretching physical stick sectors', () => {
   const cameraBefore = structuredClone(config.camera);
-  const projectedGroundRight = movement.stickToWorld(0.45, -Math.sqrt(1 - 0.45 ** 2));
-  const facing = Math.atan2(projectedGroundRight.z, -projectedGroundRight.x);
-  const actual = createSkillGesture(cam.inputAngle, { verticalScale: pitchScale });
-  const yawOnly = createSkillGesture(cam.inputAngle);
-  actual.sample({ x: 0, z: 0 }, facing);
-  yawOnly.sample({ x: 0, z: 0 }, facing);
-  const a = actual.sample({ x: 1, z: 1 }, facing);
-  const y = yawOnly.sample({ x: 1, z: 1 }, facing);
-  assert.equal(a?.kind, 'side');
-  assert.equal(y?.kind, 'front', 'yaw-only interpretation loses the visible camera plane');
+  for (const scale of [0.1, pitchScale, 0.5, 1]) {
+    const gesture = createSkillGesture(cam.inputAngle, { verticalScale: scale });
+    const facing = cam.inputAngle + Math.PI;
+    const counts = { front: 0, behind: 0, left: 0, right: 0 };
+    for (let degrees = 0; degrees < 360; degrees += 0.1) {
+      const a = ((degrees + 0.05) * Math.PI) / 180;
+      gesture.sample({ x: 0, z: 0 }, facing);
+      const command = gesture.sample({ x: Math.cos(a), z: Math.sin(a) }, facing)!;
+      counts[command.kind === 'side' ? (command.hand === 1 ? 'left' : 'right') : command.kind]++;
+    }
+    for (const value of Object.values(counts)) assert.equal(value, 900);
+    gesture.sample({ x: 0, z: 0 }, facing);
+    assert.equal(
+      gesture.sample({ x: Math.cos(Math.PI / 9), z: Math.sin(Math.PI / 9) }, facing)?.kind,
+      'side',
+    );
+  }
   assert.deepEqual(config.camera, cameraBefore);
 });
 
-test('projected anatomical directions keep their meaning at every body and camera orientation', () => {
+test('visible body-forward and its orthogonal screen sectors work at every body/camera orientation', () => {
   for (const yaw of [0, Math.PI / 3, Math.PI / 2, Math.PI, -Math.PI / 2])
-    for (const scale of [0.2, 0.5, 1])
+    for (const scale of [0.2, 0.5, 0.999999])
       for (let index = 0; index < 8; index++) {
         const facing = (index * Math.PI) / 4;
-        const view = createMovementTransform(yaw);
-        const axes = [
-          ['side', -1, -Math.cos(facing), Math.sin(facing)],
-          ['side', 1, Math.cos(facing), -Math.sin(facing)],
-          ['front', null, Math.sin(facing), Math.cos(facing)],
-          ['behind', null, -Math.sin(facing), -Math.cos(facing)],
-        ] as const;
-        const gesture = createSkillGesture(cam.inputAngle, { verticalScale: pitchScale });
-        for (const [kind, hand, wx, wz] of axes) {
-          const vector = view.worldToStick(wx, wz);
-          vector.z *= scale;
-          const length = Math.hypot(vector.x, vector.z);
-          vector.x /= length;
-          vector.z /= length;
+        const camera = new PerspectiveCamera();
+        const flat = Math.sqrt(1 - scale * scale);
+        camera.position.set(Math.sin(yaw) * flat, scale, Math.cos(yaw) * flat);
+        camera.lookAt(0, 0, 0);
+        camera.updateMatrixWorld(true);
+        const projected = new Vector3(Math.sin(facing), 0, Math.cos(facing)).transformDirection(
+          camera.matrixWorldInverse,
+        );
+        const angle = Math.atan2(projected.y, projected.x);
+        const gesture = createSkillGesture(yaw, { verticalScale: scale });
+        for (const [offset, kind, hand] of [
+          [0, 'front', null],
+          [Math.PI / 2, 'side', 1],
+          [Math.PI, 'behind', null],
+          [-Math.PI / 2, 'side', -1],
+        ] as const) {
           gesture.sample({ x: 0, z: 0 }, facing);
-          const result = gesture.sample(vector, facing, { cameraAngle: yaw, verticalScale: scale });
-          assert.equal(result?.kind, kind, `yaw=${yaw} scale=${scale} facing=${facing}`);
+          const result = gesture.sample(
+            { x: Math.cos(angle + offset), z: Math.sin(angle + offset) },
+            facing,
+          );
+          assert.equal(result?.kind, kind, `yaw=${yaw} pitch=${scale} facing=${facing}`);
           if (hand !== null) assert.equal(result?.hand, hand);
         }
       }

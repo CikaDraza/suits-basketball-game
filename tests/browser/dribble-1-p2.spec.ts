@@ -75,14 +75,14 @@ for (const legend of ['shaq', 'chuck'] as const) {
       };
       const center = window.__TEST__!.project!([player.x, 1.3, player.z]);
       const right = window.__TEST__!.project!([
-        player.x - Math.cos(player.angle),
+        player.x + Math.sin(player.angle),
         1.3,
-        player.z + Math.sin(player.angle),
+        player.z + Math.cos(player.angle),
       ]);
       const x = right.x - center.x;
       const z = center.y - right.y;
       const length = Math.hypot(x, z);
-      window.__p2Skill = { x: x / length, z: z / length };
+      window.__p2Skill = { x: z / length, z: -x / length };
       return player;
     });
     await expect

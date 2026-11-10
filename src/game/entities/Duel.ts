@@ -8,7 +8,8 @@ import {
   stepBallHandling,
 } from '../simulation/ballHandling';
 import type { Camera } from 'three';
-import type { HandGesture } from '../input/skillGesture';
+import { resolveSkillFrame, type HandGesture } from '../input/skillGesture';
+import { rightStickDebug } from '../input/rightStickDebug';
 import { createDefensiveHandInput, hasRaisedDefensiveHands } from '../input/defensiveHands';
 import { defensivePushImpulse } from '../simulation/defensivePush';
 import { createInboundPassController } from '../simulation/inboundPassController';
@@ -126,6 +127,13 @@ export function sampleDuelSkillInput(frame?: { camera: Camera }) {
       verticalScale,
     });
     if (!defenseEnabled) player.defensePushAt = -10;
+    const eligible =
+      duel.owner === slot &&
+      duel.ballState === 'held' &&
+      player.charge === 0 &&
+      player.mode !== 'down' &&
+      player.mode !== 'stun' &&
+      player.mode !== 'dunk';
     skillInputs[slot].sample({
       device: pad ? JSON.stringify([pad.id, pad.index, pad.axes.length]) : null,
       version,
@@ -136,19 +144,67 @@ export function sampleDuelSkillInput(frame?: { camera: Camera }) {
       cameraAngle,
       verticalScale,
       enabled,
-      eligible:
-        duel.owner === slot &&
-        duel.ballState === 'held' &&
-        player.charge === 0 &&
-        player.mode !== 'down' &&
-        player.mode !== 'stun' &&
-        player.mode !== 'dunk',
+      eligible,
       crossing:
         duel.ballControl.owner === slot &&
         duel.ballControl.mode === 'dribble' &&
         (duel.ballControl.crossing || duel.ballControl.skill !== null),
       crossingKind: duel.ballControl.owner === slot ? duel.ballControl.skill?.kind : null,
     });
+    if (import.meta.env?.DEV || useHarnessStore.getState().testMode) {
+      const resolved = resolveSkillFrame(mapped.skill, player.angle, cameraAngle, verticalScale);
+      const screenForward = resolved?.screenForward ??
+        resolveSkillFrame({ x: 1, z: 0 }, player.angle, cameraAngle, verticalScale)
+          ?.screenForward ?? { x: 0, z: 0 };
+      const context = inputContext(slot),
+        binding = settings.profile[context].gamepad;
+      const defense = defensiveInputs[slot].debug,
+        offense = skillInputs[slot];
+      rightStickDebug[slot] = {
+        slot,
+        legend: player.legend,
+        context,
+        time: duel.time,
+        device: pad?.id ?? null,
+        enabled,
+        eligible: context === 'defense' ? defenseEnabled : eligible,
+        rawAxes: { axis2: pad?.axes[2] ?? 0, axis3: pad?.axes[3] ?? 0 },
+        bindings: {
+          left: binding.SKILL_LEFT,
+          right: binding.SKILL_RIGHT,
+          up: binding.SKILL_UP,
+          down: binding.SKILL_DOWN,
+        },
+        calibrated: mapped.skillRaw,
+        processed: mapped.skill,
+        normalized: resolved?.normalized ?? { x: 0, z: 0 },
+        screenForward,
+        bodyRelative: resolved?.body ?? { left: 0, forward: 0 },
+        resolved: resolved?.kind ?? null,
+        anatomicalHand: resolved?.hand ?? null,
+        selected:
+          context === 'defense'
+            ? player.defenseHands
+            : !offense.armed && eligible
+              ? (offense.debug.accepted?.kind ?? 'none')
+              : 'none',
+        executing:
+          duel.ballControl.owner === slot ? (duel.ballControl.skill?.kind ?? 'none') : 'none',
+        phase: context === 'defense' ? defense.phase : offense.phase,
+        accepted: context === 'defense' ? defense.last : offense.debug.accepted,
+        lockedFacing:
+          context === 'defense'
+            ? defense.facing
+            : offense.armed
+              ? null
+              : (offense.debug.accepted?.facing ?? null),
+        bodyFacing: player.angle,
+        cameraYaw: cameraAngle,
+        cameraPitch: Math.asin(Math.min(1, verticalScale)),
+        cameraPitchScale: verticalScale,
+        movementYaw: c.camera.inputAngle,
+      };
+    }
   }
 }
 export const bodies: {

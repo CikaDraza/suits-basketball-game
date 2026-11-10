@@ -37,16 +37,12 @@ async function direction(page: Page, slot: number, hands: DefensiveHands) {
       const side = hands === 'left' || hands === 'right';
       const sign = hands === 'right' || hands === 'brace' ? -1 : 1;
       const center = seam.project!([p.x, 1.3, p.z]);
-      const target = seam.project!([
-        p.x + sign * (side ? Math.cos(p.angle) : Math.sin(p.angle)),
-        1.3,
-        p.z + sign * (side ? -Math.sin(p.angle) : Math.cos(p.angle)),
-      ]);
+      const target = seam.project!([p.x + Math.sin(p.angle), 1.3, p.z + Math.cos(p.angle)]);
       const dx = target.x - center.x,
         dy = target.y - center.y,
         length = Math.hypot(dx, dy);
-      window.__defenseAxes[slot][2] = dx / length;
-      window.__defenseAxes[slot][3] = dy / length;
+      window.__defenseAxes[slot][2] = (sign * (side ? dy : dx)) / length;
+      window.__defenseAxes[slot][3] = (sign * (side ? -dx : dy)) / length;
     },
     { slot, hands },
   );

@@ -1,0 +1,64 @@
+.right-stick-debug {
+  position: absolute;
+  right: 12px;
+  top: 94px;
+  z-index: 80;
+  color: #e9f0f5;
+  font: 11px/1.35 monospace;
+  pointer-events: auto;
+}
+.right-stick-debug > button {
+  display: block;
+  margin-left: auto;
+}
+.right-stick-debug button,
+.right-stick-debug select {
+  color: inherit;
+  background: #17232f;
+  border: 1px solid #607789;
+  border-radius: 4px;
+  padding: 5px 9px;
+  font: inherit;
+  cursor: pointer;
+}
+.right-stick-debug-panel {
+  width: 300px;
+  max-height: calc(100dvh - 145px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #607789;
+  border-radius: 6px;
+  background: rgb(10 18 26 / 94%);
+}
+.right-stick-debug-panel label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.right-stick-debug-panel strong {
+  display: block;
+  margin-top: 6px;
+}
+.right-stick-debug-panel svg {
+  display: block;
+  width: 100%;
+}
+.right-stick-debug-panel dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  gap: 3px 8px;
+}
+.right-stick-debug-panel dt {
+  color: #aebdca;
+}
+.right-stick-debug-panel dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.right-stick-debug-panel p {
+  margin: 8px 0 0;
+  color: #aebdca;
+}
