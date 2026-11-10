@@ -115,22 +115,18 @@ async function prepare(page: Page, legend: Legend, hand: Hand = 1) {
   );
   await advance(page, 1.3);
 }
-/** Independent expected direction: project an anatomical side through the actual locked camera. */
+/** Screen-space side is perpendicular to the independently projected body-forward. */
 async function visibleSide(page: Page, hand: Hand): Promise<Stick> {
   return page.evaluate((hand) => {
     const s = window.__TEST__!.getState();
     const p = s.player as { x: number; z: number; angle: number };
     const center = window.__TEST__!.project!([p.x, 1.3, p.z]);
-    const side = window.__TEST__!.project!([
-      p.x + hand * Math.cos(p.angle),
-      1.3,
-      p.z - hand * Math.sin(p.angle),
-    ]);
+    const side = window.__TEST__!.project!([p.x + Math.sin(p.angle), 1.3, p.z + Math.cos(p.angle)]);
     const x = side.x - center.x,
       z = center.y - side.y;
     const length = Math.hypot(x, z);
     if (length < 1e-6) throw new Error('Anatomical side is not visible in this camera');
-    return { x: x / length, z: z / length };
+    return { x: (-hand * z) / length, z: (hand * x) / length };
   }, hand);
 }
 async function record(page: Page, seconds: number, fullPose = false): Promise<Frame[]> {

@@ -1,5 +1,3 @@
-import { createMovementTransform } from '../simulation/coordinates';
-
 export interface SkillVector {
   x: number;
   /** Positive points up the screen, like the existing movement stick plane. */
@@ -9,7 +7,7 @@ export interface SkillVector {
 export interface SkillGestureThresholds {
   activate?: number;
   release?: number;
-  /** Ground-depth compression in the locked gameplay camera, sin(camera pitch). */
+  /** Screen projection of body-forward, sin(camera pitch); never scales the stick itself. */
   verticalScale?: number;
 }
 
@@ -32,15 +30,38 @@ export const SKILL_GESTURE_DEFAULTS = {
   doubleFlickWindow: 0.32,
 } as const;
 
-/** Shared camera/body projection for dribble gestures and held defensive poses. */
-export function resolveSkillDirection(vector: SkillVector, facing: number, yaw: number, pitch = 1) {
+/**
+ * Right stick = screen intent. Project body-forward with the rendered camera,
+ * then use orthogonal 90-degree sectors around that visible heading. Do not
+ * inverse-project the stick: a shallow broadcast camera would shrink side sectors.
+ * Left-stick locomotion deliberately keeps its existing independent reference.
+ */
+export function resolveSkillFrame(vector: SkillVector, facing: number, yaw: number, pitch = 1) {
   if (![vector.x, vector.z, facing, yaw, pitch].every(Number.isFinite) || pitch <= 0) return null;
-  const world = createMovementTransform(yaw).stickToWorld(vector.x, vector.z / pitch);
-  const side = -world.x * Math.cos(facing) + world.z * Math.sin(facing);
-  const forward = world.x * Math.sin(facing) + world.z * Math.cos(facing);
+  const magnitude = Math.hypot(vector.x, vector.z);
+  if (magnitude < 1e-12) return null;
+  const delta = facing - yaw;
+  const fx = Math.sin(delta),
+    fz = -Math.min(1, pitch) * Math.cos(delta);
+  const length = Math.hypot(fx, fz);
+  const screenForward = { x: fx / length, z: fz / length };
+  const normalized = { x: vector.x / magnitude, z: vector.z / magnitude };
+  const left = -screenForward.z * normalized.x + screenForward.x * normalized.z;
+  const forward = screenForward.x * normalized.x + screenForward.z * normalized.z;
   const kind: DribbleSkillKind =
-    Math.abs(forward) > Math.abs(side) + 1e-9 ? (forward > 0 ? 'front' : 'behind') : 'side';
-  return { kind, hand: (side > 0 ? -1 : 1) as 1 | -1 };
+    Math.abs(forward) > Math.abs(left) + 1e-9 ? (forward > 0 ? 'front' : 'behind') : 'side';
+  return {
+    screenForward,
+    normalized,
+    body: { left, forward },
+    kind,
+    hand: (left < 0 ? -1 : 1) as 1 | -1,
+  };
+}
+
+export function resolveSkillDirection(vector: SkillVector, facing: number, yaw: number, pitch = 1) {
+  const frame = resolveSkillFrame(vector, facing, yaw, pitch);
+  return frame ? { kind: frame.kind, hand: frame.hand } : null;
 }
 
 /** One skill command per neutral → deliberate direction gesture; no body transform writes. */
@@ -51,6 +72,9 @@ export function createSkillGesture(cameraAngle: number, thresholds: SkillGesture
   let armed = false;
   let sequence = 0;
   return {
+    get armed() {
+      return armed;
+    },
     reset() {
       armed = false;
     },
@@ -79,8 +103,6 @@ export function createSkillGesture(cameraAngle: number, thresholds: SkillGesture
       }
       if (!armed || magnitude < activate) return null;
       armed = false;
-      // Undo the camera's compressed ground depth before resolving the body's
-      // axes. Projected forward and right are not orthogonal on a tilted camera.
       return {
         ...resolveSkillDirection(vector, facing, yaw, pitch)!,
         facing,

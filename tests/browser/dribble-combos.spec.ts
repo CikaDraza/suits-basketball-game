@@ -88,15 +88,14 @@ async function perform(
       const p = start.player;
       const center = seam.project!([p.x, 1.3, p.z]);
       const sign = direction === 'behind' ? -1 : 1;
-      const target = seam.project!([
-        p.x + (direction === 'side' ? hand * Math.cos(p.angle) : sign * Math.sin(p.angle)),
-        1.3,
-        p.z + (direction === 'side' ? -hand * Math.sin(p.angle) : sign * Math.cos(p.angle)),
-      ]);
+      const target = seam.project!([p.x + Math.sin(p.angle), 1.3, p.z + Math.cos(p.angle)]);
       const dx = target.x - center.x,
         dz = center.y - target.y;
       const length = Math.hypot(dx, dz);
-      const vector = [dx / length, -dz / length];
+      const vector =
+        direction === 'side'
+          ? [(-hand * dz) / length, (-hand * dx) / length]
+          : [(sign * dx) / length, (-sign * dz) / length];
       window.__comboAxes[0] = moving;
       window.__comboAxes[2] = vector[0];
       window.__comboAxes[3] = vector[1];

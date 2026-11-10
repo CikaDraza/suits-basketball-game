@@ -77,6 +77,8 @@ export function readGamepadInput(
     inbound: value('INBOUND') > 0.5,
     hand: 0,
     skill,
+    /** Calibrated/remapped screen vector before the radial deadzone (diagnostics). */
+    skillRaw: { x: rawSkillX, z: rawSkillZ },
     pause: value('PAUSE') > 0.5,
   };
 }

@@ -61,6 +61,11 @@ test('the event keeps the activation orientation while waiting for physics', () 
   sample({ vector: { x: 0, z: -1 }, facing: facing + Math.PI });
   sample({ facing: facing + Math.PI });
   assert.deepEqual(buffer.take(), { kind: 'side', hand: -1, facing, sequence: 1 });
+  assert.equal(
+    buffer.debug.accepted?.facing,
+    facing,
+    'diagnostics retain the accepted command after physics consumes it',
+  );
 });
 
 test('a committed crossover rejects new input and never replays it on completion', () => {
@@ -68,6 +73,7 @@ test('a committed crossover rejects new input and never replays it on completion
   sample({ vector: { x: 0, z: -1 }, crossing: true });
   assert.equal(buffer.take(), null);
   assert.equal(buffer.debug.rejected, 1);
+  assert.equal(buffer.debug.accepted, null, 'rejected direction is not a selected command');
   sample({ vector: { x: 0, z: -1 }, crossing: false });
   assert.equal(buffer.take(), null, 'holding the rejected direction does not queue it later');
   sample();
@@ -139,9 +145,11 @@ test('pause, reset and disconnect clear pending commands and rearm only after ne
     if (lifecycle === 'disconnect') sample({ device: null, enabled: false });
     sample({ ...next, enabled: false, vector: { x: 0, z: -1 } });
     assert.equal(buffer.take(), null, `${lifecycle}: pending input cleared`);
+    assert.equal(buffer.phase, 'neutral-required');
     sample({ ...next, vector: { x: 0, z: -1 } });
     assert.equal(buffer.take(), null, `${lifecycle}: held gesture is not restored`);
     sample(next);
+    assert.equal(buffer.phase, 'armed');
     sample({ ...next, vector: { x: 0, z: 1 } });
     assert.equal(buffer.take()?.hand, 1, `${lifecycle}: fresh gesture after neutral`);
   }
