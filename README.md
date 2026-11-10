@@ -48,6 +48,9 @@ aut pripada protivniku poslednjeg igrača koji je dodirnuo loptu.
 
 [Analiza strukture, primenjena pravila i rezultati provera](docs/code-review.md).
 
+[Motion Analysis API: lokalno pokretanje i serverski OpenAI ključ](server/README.md)
+— [MOTION-AI-1A izveštaj](docs/motion-ai-1a.md).
+
 [Q stav: uzrok propadanja i ispravka oslonca stopala](docs/q-stance-fix.md).
 
 [Shaq: popravka težina prstiju u GLB-u](docs/shaq-finger-skinning-fix.md).

@@ -1,7 +1,8 @@
 # SUITS motion development architecture
 
-DIAG-1 is the implemented foundation. Training, animation ownership, motion capture,
-and optional AI analysis share the contracts below; later slices are explicit.
+DIAG-1 implements the recorder; MOTION-AI-1A adds the developer analysis API and
+shared contracts. Training, animation ownership, motion capture and optional AI
+analysis share the boundaries below; later slices are explicit.
 
 ## Current runtime and boundaries
 
@@ -117,7 +118,15 @@ using existing inbound/possession rules without a score terminal condition.
 MOCAP-2 adds a basketball technique with tests for both hands, movement, facing,
 and nearby defenders. None of these mechanics or assets are added by DIAG-1.
 
-## DIAG-AI-1 — optional offline analysis
+## MOTION-AI — analysis foundation and follow-up
+
+MOTION-AI-1A is implemented in `server/` and `shared/motion-diagnostics/` without
+moving the frontend. Its authenticated preparation endpoint validates a selected
+recording and returns bounded, minimized evidence without calling OpenAI. A
+server-only Responses adapter and explicit provider readiness CLI establish the
+transport boundary. No paid analysis HTTP route or frontend panel is enabled.
+See the [Motion Analysis Contract](motion-analysis-contract.md) and
+[implementation report](motion-ai-1a.md).
 
 Device names, notes and imported trace strings are untrusted data, never agent
 instructions. The future analysis entry accepts a user-selected diagnostic JSON and optional
@@ -134,8 +143,9 @@ The agent's output must separate:
 
 The agent cannot confirm a root cause from a screenshot alone. It does not modify
 production gameplay during analysis. A proposed fix goes through a separate branch,
-tests, before/after evidence, human visual review, and PR. Credentials/backend,
-provider choice, uploads, and AI execution belong to DIAG-AI-1, not DIAG-1.
+tests, before/after evidence, human visual review, and PR. MOTION-AI-1B adds
+deterministic analytics, 1C connects AI interpretation and 1D adds the frontend.
+Credentials and provider requests remain exclusively server-side.
 
 ## Acceptance and repeatable comparison
 
