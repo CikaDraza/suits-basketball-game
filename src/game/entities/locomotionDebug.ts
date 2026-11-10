@@ -30,6 +30,7 @@ export interface LocomotionSnapshot {
     time: number;
     cycleDistance: number;
     applied: number;
+    appliedArms: number;
   };
   feet: { planted: boolean; target: Point; neutral: Point; lift: number; yaw: number }[];
 }

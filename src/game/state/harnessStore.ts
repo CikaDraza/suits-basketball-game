@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { DefensiveArmMode } from '../input/defensiveHands';
 
 interface HarnessStore {
   testMode: boolean;
@@ -6,8 +7,11 @@ interface HarnessStore {
   debugHands: boolean;
   debugRightStick: boolean;
   debugFeet: boolean;
-  inspectionView: 'front' | 'side' | null;
-  setInspectionView: (view: 'front' | 'side' | null) => void;
+  inspectionView: 'front' | 'side' | 'rear' | null;
+  setInspectionView: (view: 'front' | 'side' | 'rear' | null) => void;
+  defensivePose: [DefensiveArmMode | null, DefensiveArmMode | null];
+  defensivePoseAt: [number, number];
+  setDefensivePose: (slot: 0 | 1, pose: DefensiveArmMode | null, time?: number) => void;
   debugLabels: boolean;
   seed: number;
   fps: number;
@@ -33,6 +37,16 @@ export const useHarnessStore = create<HarnessStore>((set) => ({
   debugFeet: false,
   inspectionView: null,
   setInspectionView: (inspectionView) => set({ inspectionView }),
+  defensivePose: [null, null],
+  defensivePoseAt: [0, 0],
+  setDefensivePose: (slot, pose, time = 0) =>
+    set((state) => {
+      const defensivePose = [...state.defensivePose] as typeof state.defensivePose;
+      const defensivePoseAt = [...state.defensivePoseAt] as typeof state.defensivePoseAt;
+      defensivePose[slot] = pose;
+      defensivePoseAt[slot] = time;
+      return { defensivePose, defensivePoseAt };
+    }),
   debugLabels: false,
   seed: 42,
   fps: 0,

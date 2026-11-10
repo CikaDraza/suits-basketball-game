@@ -17,6 +17,7 @@ import { config, type Legend } from '../data/gameConfig';
 import { MODEL_PATHS } from '../assets/manifest';
 import { clamp, dampingFactor } from '../utils/math';
 import { isSimulationRunning } from '../simulation/isSimulationRunning';
+import { useHarnessStore } from '../state/harnessStore';
 import type { PlayerSlot } from '../simulation/types';
 import { bodies, duel } from './Duel';
 import { hoop } from '../court/hoopRig';
@@ -44,9 +45,11 @@ const BONES = [
   'Spine2',
   'Neck',
   'Head',
+  'LeftShoulder',
   'LeftArm',
   'LeftForeArm',
   'LeftHand',
+  'RightShoulder',
   'RightArm',
   'RightForeArm',
   'RightHand',
@@ -222,6 +225,7 @@ interface CharacterProps {
 
 /** Rigged GLB characters. Each clone owns its skeleton; geometry/materials belong to the loader cache. */
 export function Character({ index, legend }: CharacterProps) {
+  const inspection = useHarnessStore((state) => state.inspectionView);
   const hasImportedWalk = legend === 'shaq';
   const modelPath = MODEL_PATHS[legend];
   const gltf = useGLTF(modelPath);
@@ -745,9 +749,19 @@ export function Character({ index, legend }: CharacterProps) {
         target.rDown = 0.9;
       }
     }
-    const pushAge = t - p.defensePushAt;
+    const harness = useHarnessStore.getState();
+    const preview = harness.testMode ? harness.defensivePose[index] : null;
+    const pushAge = t - (preview === 'push' ? harness.defensivePoseAt[index] : p.defensePushAt);
     const pushingArms = pushAge >= 0 && pushAge < config.defense.hands.pushDuration;
-    const defensiveHands = pushingArms ? 'push' : p.defenseHands;
+    const defensiveHands =
+      preview ??
+      (pushingArms
+        ? 'push'
+        : p.defenseHands !== 'none'
+          ? p.defenseHands
+          : states.upper === 'guard' || states.upper === 'deny'
+            ? 'ready'
+            : 'none');
     const defensiveArmsEnabled = !controlled && !receiving && grounded && p.mode !== 'stun';
     if (defensiveArmsEnabled) {
       applyDefensiveArmPose(target, defensiveHands, t, pushAge / config.defense.hands.pushDuration);
@@ -774,6 +788,8 @@ export function Character({ index, legend }: CharacterProps) {
       pose[kk] += (target[kk] - pose[kk]) * k;
     }
 
+    drive(rig, 'LeftShoulder', 0, 0, 0);
+    drive(rig, 'RightShoulder', 0, 0, 0);
     drive(rig, 'LeftArm', pose.lPitch, -pose.lIn, -pose.lDown, 'YXZ');
     drive(rig, 'RightArm', pose.rPitch, pose.rIn, pose.rDown, 'YXZ');
     drive(rig, 'LeftForeArm', 0, -pose.lElbow, 0);
@@ -898,7 +914,10 @@ export function Character({ index, legend }: CharacterProps) {
       groundFeet(groundPoint.y);
     }
     if (walk && walk.debug.weight > 0) {
-      walk.apply(states.upper === 'relaxed');
+      walk.apply(
+        states.upper === 'relaxed' &&
+          (!defensiveArmsEnabled || (defensiveHands === 'none' && !defenseArms.active)),
+      );
       model.updateWorldMatrix(true, true);
       // The imported FK legs own the moving pose; soles stay on the existing court plane.
       // The capsule remains authoritative. Hand IK below sees the final grounded torso.
@@ -957,6 +976,7 @@ export function Character({ index, legend }: CharacterProps) {
         1 -
           smoothUnit((ballPoint.distanceTo(catchPoint) - config.inbound.passing.catchRadius) / 0.4),
       );
+    if (defensiveArmsEnabled && (defensiveHands !== 'none' || defenseArms.active)) hands.release();
     hands.update(
       incoming ? incomingPoint : ballPoint,
       controlled,
@@ -975,6 +995,7 @@ export function Character({ index, legend }: CharacterProps) {
       Math.min(rawDt, 0.25),
       defensiveArmsEnabled,
       pushAge / config.defense.hands.pushDuration,
+      t,
     );
     model.updateWorldMatrix(true, true);
     // Compatibility diagnostic, never used as an attachment target by the ball controller.
@@ -1021,7 +1042,12 @@ export function Character({ index, legend }: CharacterProps) {
   }, -50);
 
   return (
-    <group ref={floor} name={`character-${index}`} position-y={-bodyY}>
+    <group
+      ref={floor}
+      name={`character-${index}`}
+      position-y={-bodyY}
+      visible={!inspection || index === 0}
+    >
       <mesh ref={blob} rotation-x={-Math.PI / 2} position-y={0.012} renderOrder={1}>
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial map={shadowTexture} transparent depthWrite={false} opacity={0.85} />

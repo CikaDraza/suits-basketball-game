@@ -6,7 +6,8 @@ import {
   type HandGesture,
 } from './skillGesture';
 
-export type DefensiveHands = 'none' | 'left' | 'right' | 'up' | 'wave' | 'brace' | 'push';
+export type DefensiveHands = 'none' | 'left' | 'right' | 'wide' | 'up' | 'wave' | 'brace' | 'push';
+export type DefensiveArmMode = DefensiveHands | 'ready';
 
 /** Neutral releases an accepted action; held input preserves its anatomical side. */
 export function readDefensiveHands(

@@ -3,6 +3,30 @@ import type { RapierRigidBody } from '@react-three/rapier';
 import type { PlayerSlot } from '../simulation/types';
 import { forEachFootVertex } from '../entities/footGrounding';
 import type { createArmContact } from '../entities/armContact';
+import type { createDefensiveArmIK } from '../entities/defensiveArmIK';
+import type { DefensiveArmMode } from '../input/defensiveHands';
+
+type Point = { x: number; y: number; z: number };
+export interface DefensiveArmSnapshot {
+  mode: DefensiveArmMode;
+  weight: number;
+  shoulderGirdle: Point;
+  shoulder: Point;
+  elbow: Point;
+  wrist: Point;
+  upperDirection: Point;
+  foreDirection: Point;
+  upperLength: number;
+  foreLength: number;
+  elbowPlaneError: number;
+  elbowFlex: number;
+  wristBend: number;
+  forearmTwist: number;
+  contactError: number;
+  maximumOverheadPalmY: number;
+  poleFallback: boolean;
+  wristContinuityLimited: boolean;
+}
 
 export interface CharacterPoseSnapshot {
   bodyY: number;
@@ -14,6 +38,7 @@ export interface CharacterPoseSnapshot {
   leftSoleY: number;
   rightSoleY: number;
   joints: Record<string, { x: number; y: number; z: number }>;
+  defensiveArms: DefensiveArmSnapshot[];
   hands: {
     palm: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
@@ -26,6 +51,40 @@ export interface CharacterPoseSnapshot {
     socketPosition: number[];
     socketQuaternion: number[];
   }[];
+}
+export function readDefensiveArms(root: Object3D): DefensiveArmSnapshot[] {
+  let result: DefensiveArmSnapshot[] = [];
+  root.traverse((object) => {
+    const contact = object.userData.defensiveArmContact as
+      | {
+          mode: DefensiveArmMode;
+          solvers: ReturnType<typeof createDefensiveArmIK>[];
+          memory: { shoulder: Bone; overheadReach: number }[];
+        }
+      | undefined;
+    if (!contact) return;
+    result = contact.solvers.map(({ debug: d }, i) => ({
+      mode: contact.mode,
+      weight: d.weight,
+      shoulderGirdle: { ...contact.memory[i].shoulder.getWorldPosition(new Vector3()) },
+      shoulder: { ...d.shoulder },
+      elbow: { ...d.elbow },
+      wrist: { ...d.wrist },
+      upperDirection: { ...d.upperDirection },
+      foreDirection: { ...d.foreDirection },
+      upperLength: d.upperLength,
+      foreLength: d.foreLength,
+      elbowPlaneError: d.elbowPlaneError,
+      elbowFlex: d.elbowFlex,
+      wristBend: d.wristBend,
+      forearmTwist: d.forearmTwist,
+      contactError: d.contactError,
+      maximumOverheadPalmY: d.shoulder.y + contact.memory[i].overheadReach,
+      poleFallback: d.poleFallback,
+      wristContinuityLimited: d.wristContinuityLimited,
+    }));
+  });
+  return result;
 }
 export function readHandContacts(root: Object3D): CharacterPoseSnapshot['hands'] {
   let arms: ReturnType<typeof createArmContact>[] = [];
@@ -62,7 +121,10 @@ export function readCharacterPose(
     if (!(object instanceof Bone)) return;
     if (/Hips$/.test(object.name)) hips = object;
     const name = object.name.replace(/^mixamorig:?/, '');
-    if (/^(Left|Right)(Hand|ForeArm|Arm|UpLeg|Leg|Foot)$/.test(name)) {
+    if (
+      /^(Left|Right)(Shoulder|Hand|ForeArm|Arm|UpLeg|Leg|Foot)$/.test(name) ||
+      /^(Head|Neck|Spine2)$/.test(name)
+    ) {
       object.getWorldPosition(point);
       joints[name] = { x: point.x, y: point.y, z: point.z };
     }
@@ -89,5 +151,6 @@ export function readCharacterPose(
     rightSoleY,
     joints,
     hands: readHandContacts(root),
+    defensiveArms: readDefensiveArms(root),
   };
 }

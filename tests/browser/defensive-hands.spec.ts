@@ -170,6 +170,16 @@ for (const legend of ['shaq', 'chuck'] as const) {
             (hand.z - shoulder.z) * Math.sin(before.angle);
           expect(side * (hands === 'left' ? 1 : -1)).toBeGreaterThan(0.35);
           expect(Math.abs(hand.y - shoulder.y)).toBeLessThan(0.3);
+          const active = hands === 'left' ? 0 : 1;
+          expect(pose.defensiveArms[active].elbowFlex).toBeLessThan(18);
+          expect(pose.defensiveArms[active].elbowPlaneError).toBeLessThan(1);
+          const guard = pose.defensiveArms[1 - active];
+          expect(guard.elbowFlex).toBeGreaterThan(85);
+          expect(guard.wrist.y - guard.elbow.y).toBeGreaterThan(0.08);
+          expect(
+            (guard.wrist.x - guard.shoulder.x) * Math.sin(before.angle) +
+              (guard.wrist.z - guard.shoulder.z) * Math.cos(before.angle),
+          ).toBeGreaterThan(0.25);
           const contacts = await page.evaluate(
             (slot) => window.__TEST__!.getHandContacts!(slot),
             slot,
@@ -186,8 +196,17 @@ for (const legend of ['shaq', 'chuck'] as const) {
             expect(ahead).toBeGreaterThan(0.2);
           }
         } else {
-          expect(left.y - leftShoulder.y).toBeGreaterThan(0.35);
-          expect(right.y - rightShoulder.y).toBeGreaterThan(0.35);
+          for (const [i, arm] of pose.defensiveArms.entries()) {
+            expect(arm.elbowPlaneError).toBeLessThan(1);
+            expect(pose.hands[i].palm.y - pose.joints.Head.y).toBeGreaterThan(0.4);
+            if (hands === 'up') {
+              expect(arm.elbowFlex).toBeLessThan(12);
+              expect(
+                (pose.hands[i].palm.y - arm.shoulder.y) /
+                  (arm.maximumOverheadPalmY - arm.shoulder.y),
+              ).toBeGreaterThan(0.97);
+            }
+          }
           if (hands === 'wave') {
             const frames = await page.evaluate(async (slot) => {
               const poses = [];
