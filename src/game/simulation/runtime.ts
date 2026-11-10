@@ -70,7 +70,7 @@ export function createDuelState(
   legends: [Legend, Legend],
   seed = 42,
   revision = -1,
-  start: 'inbound' | 'live' = 'inbound',
+  start: 'inbound' | 'live' | 'movement' = 'inbound',
 ) {
   const spawn = level.spawns[level.initialOwner];
   return {
@@ -78,7 +78,11 @@ export function createDuelState(
     players: [createFighter(0, legends[0]), createFighter(1, legends[1])] as [Fighter, Fighter],
     owner: start === 'live' ? level.initialOwner : -1,
     lastTouch: level.initialOwner,
-    ballState: (start === 'live' ? 'held' : 'inbound') as BallState,
+    ballState: (start === 'movement'
+      ? 'inactive'
+      : start === 'live'
+        ? 'held'
+        : 'inbound') as BallState,
     ballControl: createBallHandlingState(),
     ball:
       start === 'live'
@@ -123,9 +127,9 @@ export function createDuelState(
     resetTimer: 0,
     nextOwner: level.initialOwner,
     looseTimer: 0,
-    inboundOwner: level.initialOwner,
+    inboundOwner: start === 'movement' ? -1 : level.initialOwner,
     inboundStage: 'position' as InboundStage,
-    inboundClock: start === 'live' ? 0 : config.inbound.positionTime,
+    inboundClock: start === 'inbound' ? config.inbound.positionTime : 0,
     aiPassAt: 0,
     inboundPass: null as PhysicalInboundPass | null,
     lastInboundRequestId: 0,

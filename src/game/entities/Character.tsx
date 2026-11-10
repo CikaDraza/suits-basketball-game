@@ -340,7 +340,7 @@ export function Character({ index, legend }: CharacterProps) {
       s = config.shots;
     const body = bodies.players[index];
     const owner = duel.owner === index;
-    const opponent = duel.players[1 - index];
+    const opponent = bodies.players[1 - index] ? duel.players[1 - index] : null;
     const exhausted = p.energy < config.player.exhaustedThreshold;
     const rimDx = hoop.rimWorld.x - p.x,
       rimDz = hoop.rimWorld.z - p.z;
@@ -363,7 +363,7 @@ export function Character({ index, legend }: CharacterProps) {
     const velocity = { x: st.velX, z: st.velZ };
     const measuredSpeed = Math.hypot(velocity.x, velocity.z);
     if (awaitingPass && measuredSpeed > config.animation.callForPass.cutSpeed) st.lastCut = t;
-    const opponentDistance = Math.hypot(opponent.x - p.x, opponent.z - p.z);
+    const opponentDistance = opponent ? Math.hypot(opponent.x - p.x, opponent.z - p.z) : Infinity;
     const states = deriveStates({
       mode: p.mode,
       controlled,
@@ -528,8 +528,8 @@ export function Character({ index, legend }: CharacterProps) {
       Math.sin(t * (exhausted ? 7 : 3)) * (exhausted ? 0.04 : 0.012);
 
     // look at the ball (head yaw in local frame); chest follows within anatomical limits
-    const bx = duel.ball.x - p.x,
-      bz = duel.ball.z - p.z;
+    const bx = duel.ballState === 'inactive' ? 0 : duel.ball.x - p.x,
+      bz = duel.ballState === 'inactive' ? 0 : duel.ball.z - p.z;
     const ballLocalX = bx * Math.cos(p.angle) - bz * Math.sin(p.angle),
       ballLocalZ = bx * Math.sin(p.angle) + bz * Math.cos(p.angle);
     const look = Math.atan2(ballLocalX, Math.max(0.2, ballLocalZ));
@@ -537,7 +537,9 @@ export function Character({ index, legend }: CharacterProps) {
     const ballSide = ballLocalX >= 0 ? 1 : -1; // +1 = ball on the character's left
     target.headYaw = clamp(look * 0.55, -0.7, 0.7);
     target.headPitch = clamp(
-      (-(duel.ball.y - rig.headY) / Math.max(1, Math.hypot(bx, bz))) * 0.4,
+      (-(duel.ballState === 'inactive' ? 0 : duel.ball.y - rig.headY) /
+        Math.max(1, Math.hypot(bx, bz))) *
+        0.4,
       -0.45,
       0.35,
     );
@@ -662,7 +664,7 @@ export function Character({ index, legend }: CharacterProps) {
           target.lPitch = target.rPitch = -0.45;
           target.lElbow = target.rElbow = 1.6;
         }
-        if (awaitingPass) {
+        if (awaitingPass && opponent) {
           const gx = opponent.x - p.x,
             gz = opponent.z - p.z;
           const localX = gx * Math.cos(p.angle) - gz * Math.sin(p.angle);
@@ -772,7 +774,7 @@ export function Character({ index, legend }: CharacterProps) {
     // posture lean: low defensive stance; bracing leans into the blocker
     target.lean +=
       0.18 * st.wDefensive * (states.upper === 'guard' || states.upper === 'deny' ? 0 : 1);
-    if (st.brace > 0.01) {
+    if (st.brace > 0.01 && opponent) {
       const behind = (opponent.x - p.x) * fx + (opponent.z - p.z) * fz < 0;
       target.lean += (behind ? -1 : 1) * PO.braceLean * st.brace;
     }

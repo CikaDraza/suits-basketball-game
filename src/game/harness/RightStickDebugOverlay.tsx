@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { rightStickDebug, type RightStickSnapshot } from '../input/rightStickDebug';
-import { useGameStore } from '../state/gameStore';
+import { isFreeMovement, useGameStore } from '../state/gameStore';
 import { useHarnessStore } from '../state/harnessStore';
 import './right-stick-debug.css';
 
@@ -10,6 +10,7 @@ const vector = (v: { x: number; z: number }) => `${v.x.toFixed(3)}, ${v.z.toFixe
 /** Development-only DOM observer; sampling never writes to the game or starts a 3D loop. */
 export function RightStickDebugOverlay() {
   const visible = useHarnessStore((s) => s.debugRightStick);
+  const movement = useGameStore((s) => isFreeMovement(s.session));
   const playing = useGameStore((s) => s.screen === 'playing');
   const [slot, setSlot] = useState<0 | 1>(0);
   const [snapshot, setSnapshot] = useState<RightStickSnapshot | null>(null);
@@ -19,11 +20,11 @@ export function RightStickDebugOverlay() {
   }, []);
   useEffect(() => {
     if (!visible || !playing) return;
-    const update = () => setSnapshot(rightStickDebug[slot]);
+    const update = () => setSnapshot(rightStickDebug[movement ? 0 : slot]);
     update();
     const timer = window.setInterval(update, 100);
     return () => window.clearInterval(timer);
-  }, [visible, playing, slot]);
+  }, [visible, playing, slot, movement]);
   if (!playing) return null;
   return (
     <aside className="right-stick-debug" aria-label="Right-stick diagnostics">
@@ -38,9 +39,12 @@ export function RightStickDebugOverlay() {
         <div className="right-stick-debug-panel">
           <label>
             Player{' '}
-            <select value={slot} onChange={(e) => setSlot(Number(e.target.value) as 0 | 1)}>
+            <select
+              value={movement ? 0 : slot}
+              onChange={(e) => setSlot(Number(e.target.value) as 0 | 1)}
+            >
               <option value={0}>P1</option>
-              <option value={1}>P2</option>
+              {!movement && <option value={1}>P2</option>}
             </select>
           </label>
           {!snapshot ? (

@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import {
@@ -12,14 +12,15 @@ import {
 import { Mesh, Group, SRGBColorSpace } from 'three';
 import { config, level } from '../data/gameConfig';
 import { TEXTURE_PATHS } from '../assets/manifest';
-import { useGameStore } from '../state/gameStore';
+import { isFreeMovement, useGameStore } from '../state/gameStore';
+import { useHarnessStore } from '../state/harnessStore';
 import { useDuelTestSeam } from '../harness/useDuelTestSeam';
 import { isSimulationRunning } from '../simulation/isSimulationRunning';
 import type { PlayerSlot } from '../simulation/types';
 import { Character } from './Character';
 import { InboundCountdown } from './InboundCountdown';
 import { FootContactDebug } from './FootContactDebug';
-import { duel, bodies, tickDuel, sampleDuelSkillInput } from './Duel';
+import { duel, bodies, tickDuel, sampleDuelSkillInput, resetDuel } from './Duel';
 import { afterDuelPhysicsStep } from './Duel';
 import { PLAYER_COLLISION_GROUPS } from '../physics/ballCollision';
 
@@ -42,6 +43,14 @@ function DuelPlayer({ index }: { readonly index: PlayerSlot }) {
   const bindBody = useCallback(
     (body: RapierRigidBody | null) => {
       bodies.players[index] = body;
+    },
+    [index],
+  );
+
+  // Rapier 2.2 does not call function refs with null when destroying a body.
+  useEffect(
+    () => () => {
+      bodies.players[index] = null;
     },
     [index],
   );
@@ -77,6 +86,13 @@ function bindBallMesh(mesh: Mesh | null): void {
 
 function DuelBall() {
   const texture = useTexture(TEXTURE_PATHS.basketball);
+  useEffect(
+    () => () => {
+      bodies.ball = null;
+      bodies.ballMesh = null;
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     if (texture.colorSpace !== SRGBColorSpace) {
@@ -105,9 +121,15 @@ function DuelBall() {
 }
 
 export function DuelArena() {
+  const movement = useGameStore((s) => isFreeMovement(s.session));
+  const revision = useGameStore((s) => s.revision);
   const rings = useRef<Group>(null);
   const burst = useRef<Mesh>(null);
   useDuelTestSeam();
+  // Child Rapier effects create/remove bodies before session initialization.
+  useEffect(() => {
+    if (duel.revision !== revision) resetDuel(useHarnessStore.getState().seed);
+  }, [revision]);
   useFrame(sampleDuelSkillInput, -110);
   useBeforePhysicsStep(() => tickDuel(1 / config.physics.timestep));
   useAfterPhysicsStep(afterDuelPhysicsStep);
@@ -116,7 +138,7 @@ export function DuelArena() {
     if (!isSimulationRunning()) return;
 
     if (rings.current) {
-      for (let index = 0; index < duel.players.length; index++) {
+      for (let index = 0; index < rings.current.children.length; index++) {
         const player = duel.players[index];
         rings.current.children[index].position.set(player.x, 0.024, player.z);
       }
@@ -135,17 +157,17 @@ export function DuelArena() {
   return (
     <>
       <DuelPlayer index={0} />
-      <DuelPlayer index={1} />
-      <DuelBall />
+      {!movement && <DuelPlayer index={1} />}
+      {!movement && <DuelBall />}
       <group ref={rings}>
-        {PLAYER_COLORS.map((color) => (
+        {PLAYER_COLORS.slice(0, movement ? 1 : 2).map((color) => (
           <mesh key={color} rotation={[-Math.PI / 2, 0, 0]}>
             <ringGeometry args={[0.68, 0.73, 32]} />
             <meshBasicMaterial color={color} transparent opacity={0.85} depthWrite={false} />
           </mesh>
         ))}
       </group>
-      <InboundCountdown />
+      {!movement && <InboundCountdown />}
       <FootContactDebug />
       <mesh ref={burst} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[0.4, 0.44, 24]} />

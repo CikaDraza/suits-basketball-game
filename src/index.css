@@ -1104,3 +1104,56 @@ h2 span {
     padding-bottom: 8px;
   }
 }
+
+.training-modes {
+  display: grid;
+  gap: 8px;
+  width: min(460px, 100%);
+}
+.training-mode {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 18px;
+  text-align: left;
+  border: 1px solid #34414b;
+  border-radius: 3px;
+  background: #17232e;
+  color: #b1bec4;
+}
+.training-mode.selected {
+  border-color: var(--accent);
+  background: linear-gradient(110deg, #23313c, #5b402a);
+  color: #fff;
+}
+.training-mode strong {
+  display: block;
+  font-family: 'Barlow Condensed', Impact, sans-serif;
+  font-size: 22px;
+}
+.training-mode small {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+}
+.training-mode:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.panel-actions {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.training-panel > * {
+  flex-shrink: 0;
+}
+@media (max-height: 520px) {
+  .training-panel {
+    justify-content: flex-start;
+    gap: 10px;
+    padding-block: 18px;
+  }
+  .training-mode {
+    padding-block: 8px;
+  }
+}

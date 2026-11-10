@@ -3,7 +3,8 @@ import type { DefensiveHands } from '../input/defensiveHands';
 import type { InboundPassPlan, InboundPassOutcome, PassPoint } from './tacticalPass';
 
 export type PlayerSlot = 0 | 1;
-export type BallState = 'held' | 'loose' | 'shot' | 'pass' | 'smash' | 'inbound' | 'scored';
+export type BallState =
+  'inactive' | 'held' | 'loose' | 'shot' | 'pass' | 'smash' | 'inbound' | 'scored';
 export type Mode =
   'idle' | 'post' | 'spin' | 'contest' | 'shoot' | 'down' | 'stun' | 'dunk' | 'exhausted';
 export type Handling = 'hold' | 'dribble';

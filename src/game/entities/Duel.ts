@@ -24,7 +24,7 @@ import { createDuelState } from '../simulation/runtime';
 import { createHudSnapshot } from '../simulation/hudSnapshot';
 import { isSimulationRunning } from '../simulation/isSimulationRunning';
 import type { Fighter, PlayerSlot } from '../simulation/types';
-import { useGameStore } from '../state/gameStore';
+import { isFreeMovement, useGameStore } from '../state/gameStore';
 import {
   getInputResetVersion,
   takeButtonEdges,
@@ -67,9 +67,11 @@ export type { Fighter, Mode, Handling, InboundStage } from '../simulation/types'
  *   Keep a direction pressed beyond the short tap window = start dribbling and moving.
  */
 export const duel = createDuelState(['shaq', 'chuck']);
+const freeMovement = () => isFreeMovement(useGameStore.getState().session);
 const inputContext = (slot: number) =>
+  !freeMovement() &&
   (duel.ballState === 'inbound' || duel.ballState === 'pass' ? duel.inboundOwner : duel.owner) ===
-  slot
+    slot
     ? ('offense' as const)
     : ('defense' as const);
 setControlContextReader(inputContext);
@@ -89,6 +91,8 @@ const defensiveInputs = [0, 1].map(() =>
 
 /** Observe skill edges before Rapier; a release in a render frame cannot erase a pending command. */
 export function sampleDuelSkillInput(frame?: { camera: Camera }) {
+  if (duel.revision !== useGameStore.getState().revision)
+    resetDuel(useHarnessStore.getState().seed);
   const settings = useControlSettingsStore.getState();
   const pads = navigator.getGamepads?.() ?? [];
   const version = getInputResetVersion();
@@ -103,7 +107,8 @@ export function sampleDuelSkillInput(frame?: { camera: Camera }) {
       neutral,
     );
     const player = duel.players[slot];
-    const enabled = allowed && isSimulationRunning() && !settings.capturing;
+    const enabled =
+      allowed && (!freeMovement() || slot === 0) && isSimulationRunning() && !settings.capturing;
     const cameraAngle = frame
       ? Math.atan2(frame.camera.matrixWorld.elements[8], frame.camera.matrixWorld.elements[10])
       : c.camera.inputAngle;
@@ -277,6 +282,7 @@ const rampTarget = { x: 0, z: 0 },
  * - on-ball: square up to the ball handler inside `guardRange`.
  */
 function defensiveFacing(i: number): number | null {
+  if (freeMovement()) return null;
   const p = duel.players[i],
     o = duel.players[1 - i];
   if ((duel.ballState === 'inbound' || duel.ballState === 'pass') && i !== duel.inboundOwner) {
@@ -405,6 +411,7 @@ const inboundPassController = createInboundPassController({
 /** Runs after each actual Rapier substep, before another step can overwrite the contact. */
 export function afterDuelPhysicsStep(world: World): void {
   if (!isSimulationRunning()) return;
+  if (freeMovement()) return;
   inboundPassController.afterPhysicsStep(world);
   const point = bodies.ball?.translation();
   if (point) {
@@ -575,9 +582,20 @@ export function resetDuel(seed = 42, scenario?: string) {
   const state = useGameStore.getState();
   Object.assign(
     duel,
-    createDuelState(state.legends, seed, state.revision, scenario === 'live' ? 'live' : 'inbound'),
+    createDuelState(
+      state.legends,
+      seed,
+      state.revision,
+      freeMovement() ? 'movement' : scenario === 'live' ? 'live' : 'inbound',
+    ),
   );
   duel.lastInboundRequestId = state.inboundRequestSequence;
+  skillInputs.forEach((input) => input.reset());
+  defensiveInputs.forEach((input) => input.reset());
+  rightStickDebug.fill(null);
+  if (freeMovement()) {
+    duel.message = 'Free Movement · Movement, Defense, Footwork.';
+  }
   syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   resetHoop();
   bodies.players.forEach((body, slot) => {
@@ -618,11 +636,13 @@ export function resetDuel(seed = 42, scenario?: string) {
   );
   bodies.ball?.setGravityScale(0, true);
   useInputStore.getState().flush();
-  if (scenario !== 'live') inbound(level.initialOwner, 'start');
-  if (scenario === 'inbound-cpu') inbound(1, 'start');
+  if (!freeMovement()) {
+    if (scenario !== 'live') inbound(level.initialOwner, 'start');
+    if (scenario === 'inbound-cpu') inbound(1, 'start');
+  }
   useGameStore.setState((previous) => ({
     ...createHudSnapshot(duel, previous, HUD_SETTINGS),
-    screen: 'playing',
+    screen: state.screen,
     finalScore: 0,
   }));
 }
@@ -866,7 +886,7 @@ export function tickDuel(delta: number) {
   });
   duel.players.forEach((p, i) => {
     const b = bodies.players[i];
-    if (!b) return;
+    if (!b || (freeMovement() && i !== 0)) return;
     const input = controls(i, dt);
     const resetVersion = getInputResetVersion();
     if (p.inputResetVersion !== resetVersion) {
@@ -1068,14 +1088,14 @@ export function tickDuel(delta: number) {
       if (moving > 0 && p.mode !== 'post') targetAngle = Math.atan2(x, z);
       const inboundPlay = duel.ballState === 'inbound' || duel.ballState === 'pass';
       const guardAngle = defensiveFacing(i);
-      if (p.mode === 'post')
+      if (p.mode === 'post' && !freeMovement())
         targetAngle =
           !owner && inboundPlay
             ? facing(p, duel.ball.x, duel.ball.z) // the actual ball/passer, not a fixed spot
             : facing(p, rim.x, rim.z) + Math.PI;
       else if (anchored || p.charge > 0)
         targetAngle = facing(p, rim.x, rim.z); // triple threat faces the rim
-      else if (p.mode === 'contest') targetAngle = facing(p, o.x, o.z);
+      else if (p.mode === 'contest' && !freeMovement()) targetAngle = facing(p, o.x, o.z);
       else if (guardAngle !== null) {
         targetAngle = guardAngle; // slide/backpedal, chest on the man
         // heavy defenders slide and backpedal slower than they run forward
@@ -1217,7 +1237,7 @@ export function tickDuel(delta: number) {
     p.prevX = input.x;
   });
   const request = useGameStore.getState().inboundPassRequest;
-  if (request && request.id !== duel.lastInboundRequestId) {
+  if (!freeMovement() && request && request.id !== duel.lastInboundRequestId) {
     duel.lastInboundRequestId = request.id;
     if (
       request.positioning &&
@@ -1250,7 +1270,14 @@ export function tickDuel(delta: number) {
     )
       return;
     p.defensePushApplied = true;
-    if (p.mode === 'down' || p.mode === 'stun' || inputContext(i) !== 'defense') return;
+    if (
+      freeMovement() ||
+      !bodies.players[1 - i] ||
+      p.mode === 'down' ||
+      p.mode === 'stun' ||
+      inputContext(i) !== 'defense'
+    )
+      return;
     const o = duel.players[1 - i];
     const impulse = defensivePushImpulse(
       { x: p.x, z: p.z, angle: p.angle, mass: c.player[p.legend].mass },
@@ -1266,7 +1293,7 @@ export function tickDuel(delta: number) {
   // ---- body contact
   const [a, b] = duel.players,
     d = dist(a, b) || 0.001;
-  if (d < c.physics.radius * 2 + c.physics.contactPadding) {
+  if (!freeMovement() && d < c.physics.radius * 2 + c.physics.contactPadding) {
     duel.players.forEach((p, i) => {
       const o = duel.players[1 - i];
       if (o.mode === 'down' && p.moving > c.player.minMove && p.mode !== 'down' && p.grace <= 0) {
@@ -1297,7 +1324,7 @@ export function tickDuel(delta: number) {
   }
   // ---- ball
   const ball = bodies.ball;
-  if (ball) {
+  if (ball && !freeMovement()) {
     syncBallCollision(ball, duel.ballState, BALL_CLEARANCE);
     if (duel.ballState !== 'held') {
       duel.ballControl.owner = -1;

@@ -85,7 +85,7 @@ export function createDefensiveArmContact(
       hands: DefensiveArmMode,
       _floor: Vector3,
       angle: number,
-      opponent: { x: number; z: number; legend: Legend },
+      opponent: { x: number; z: number; legend: Legend } | null,
       dt: number,
       enabled: boolean,
       pushProgress = 0,
@@ -149,9 +149,13 @@ export function createDefensiveArmContact(
               mode === 'push' ? Math.sin(Math.PI * Math.max(0, Math.min(1, pushProgress))) ** 2 : 0;
             solver.arm.upper.getWorldPosition(shoulder);
             const ahead =
-              (opponent.x - shoulder.x) * forward.x + (opponent.z - shoulder.z) * forward.z;
-            const side = (opponent.x - shoulder.x) * left.x + (opponent.z - shoulder.z) * left.z;
+              ((opponent?.x ?? shoulder.x) - shoulder.x) * forward.x +
+              ((opponent?.z ?? shoulder.z) - shoulder.z) * forward.z;
+            const side =
+              ((opponent?.x ?? shoulder.x) - shoulder.x) * left.x +
+              ((opponent?.z ?? shoulder.z) - shoulder.z) * left.z;
             const close =
+              opponent !== null &&
               ahead > 0 &&
               Math.hypot(opponent.x - shoulder.x, opponent.z - shoulder.z) <=
                 config.defense.hands.pushRange;

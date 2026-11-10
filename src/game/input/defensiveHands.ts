@@ -63,6 +63,7 @@ export function createDefensiveHandInput(doubleWindow: number) {
     pending = null;
   };
   return {
+    reset: clear,
     debug,
     sample(sample: {
       device: string | null;

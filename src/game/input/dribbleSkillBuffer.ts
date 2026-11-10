@@ -52,6 +52,7 @@ export function createDribbleSkillBuffer(
     debug.accepted = null;
   };
   return {
+    reset: clear,
     debug,
     get armed() {
       return gesture.armed;
