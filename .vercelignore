@@ -1,0 +1,16 @@
+.env
+.env.*
+server/.env
+server/.env.*
+.agents
+.codex
+.aws
+node_modules
+dist
+server/dist
+shared/motion-diagnostics/dist
+playtest
+test-results
+playwright-report
+.playwright-cli
+.vercel

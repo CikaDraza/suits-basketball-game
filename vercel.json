@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build -w @suits/motion-contracts && npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/health.ts": { "maxDuration": 10 },
+    "api/motion/analyze.ts": { "maxDuration": 30 }
+  }
+}

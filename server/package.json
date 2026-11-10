@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "node --import tsx --test tests/*.test.ts",
     "provider:check": "node --env-file-if-exists=.env --import tsx src/providerCheck.ts",
-    "prepare:recording": "node --env-file-if-exists=.env --import tsx src/prepareRecording.ts"
+    "prepare:recording": "node --env-file-if-exists=.env --import tsx src/prepareRecording.ts",
+    "compact:recording": "node --import tsx src/compactRecording.ts"
   },
   "dependencies": {
     "@suits/motion-contracts": "*",

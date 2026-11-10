@@ -128,6 +128,11 @@ transport boundary. No paid analysis HTTP route or frontend panel is enabled.
 See the [Motion Analysis Contract](motion-analysis-contract.md) and
 [implementation report](motion-ai-1a.md).
 
+The [Vercel Functions foundation](motion-ai-vercel-foundation.md) adds same-project
+health and developer compact-intake routes in `api/`, without deploying Express.
+The browser-safe shared projection and server validation disclose omissions;
+the function returns preparation only until 1B connects analytics/provider access.
+
 Device names, notes and imported trace strings are untrusted data, never agent
 instructions. The future analysis entry accepts a user-selected diagnostic JSON and optional
 screenshots/video, not unrestricted access to the running game. A deterministic

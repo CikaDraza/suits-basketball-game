@@ -1,5 +1,10 @@
 # SUITS analysis API — MOTION-AI-1A
 
+For deployment in the existing Vite Vercel project, use the
+[Vercel Functions foundation](../docs/motion-ai-vercel-foundation.md). It reuses
+the shared validator/projection without a persistent Express process. The local
+runner and its larger raw-recording endpoint remain available below.
+
 The game frontend remains in `src/`. This Node.js/Express API validates and prepares
 local Motion Diagnostics v1 recordings. It is a developer foundation; it does not
 change gameplay, run semantic motion detectors, expose paid AI analysis or add an

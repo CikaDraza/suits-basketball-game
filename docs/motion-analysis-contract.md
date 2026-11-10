@@ -40,6 +40,16 @@ written by the API; request bodies and credentials are not logged.
 
 ## Foundation endpoints
 
+The deployable same-project Vercel entry points and compact transport are described
+in [Vercel Node.js API Foundation](motion-ai-vercel-foundation.md). `GET /api/health`
+and `POST /api/motion/analyze` run as Functions. The latter returns preparation
+only (`aiCalled: false`, `analysisStatus: not-implemented`) until 1B. Its 96 KiB
+request/64 KiB evidence limits replace the local raw intake limit on Vercel.
+Original hash, source identity and totals supplied in compact evidence are client
+assertions, not server attestation. Sample omissions prevent full-trace metrics.
+
+The following endpoints remain available in the optional local Express runner:
+
 - `GET /health`: process health, no credential/configuration details.
 - `POST /api/motion-analysis/prepare`: developer authentication, request limits,
   recording validation, SHA-256 identity, provenance assessment and a bounded,
@@ -47,8 +57,8 @@ written by the API; request bodies and credentials are not logged.
 
 MOTION-AI-1A prepares and tests a server-only Responses adapter against that packet
 and the proposed report schema. It is not an exposed paid analysis endpoint.
-The later `/api/motion-analysis` analysis route, semantic detectors and frontend
-Analyze button belong to 1B–1D. A separate explicit provider-check CLI sends only
+Paid analysis, semantic detectors and the frontend Analyze button belong to 1B–1D.
+A separate explicit provider-check CLI sends only
 a fixed small readiness question, never a recording.
 
 ## Evidence minimization and provenance
