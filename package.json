@@ -22,7 +22,7 @@
     "analysis:compact": "npm run build -w @suits/motion-contracts && npm run compact:recording -w @suits/analysis-api --"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": "24.x"
   },
   "overrides": {
     "minimatch": "^11.0.1"

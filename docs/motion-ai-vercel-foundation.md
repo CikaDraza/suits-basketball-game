@@ -65,7 +65,8 @@ never proves command failure. Server-side caveats cannot be removed by a client.
 
 Deploy the feature branch as Preview in the existing `suits-basketball-game`
 project. `vercel.json` builds the shared workspace before Vite, emits `dist/`,
-and sets bounded function durations. The project uses Node.js 24.x.
+and sets bounded function durations. The root package pins Node.js `24.x`; a broad
+`>=22` range would let Vercel override the project's 24.x setting with Node.js 26.
 
 Configure `MOTION_ANALYSIS_TOKEN` as a Preview Secret with at least 32 characters.
 Send it in the HTTP `Authorization: Bearer ...` header using a developer client.
@@ -94,6 +95,21 @@ tests, existing local HTTP tests and the game build. Private original recordings
 and generated compact packages are kept outside Git. Concrete test/deployment
 results are recorded in the delivery report/PR; no original counts or motion
 findings are inferred from a sampled package in this slice.
+
+Local checks passed: `npm run check` (191 existing unit tests + 32 backend/Functions
+tests), frontend/API builds, and two existing Duel/Training browser scenarios with
+installed Chrome. All 28 frontend build files were scanned for the actual local
+secrets and provider endpoint code; neither was present. The original 8,416,404-byte
+Training recording compacted to 64,790 request bytes and passed the Web handler as
+`training.movement`, with omissions disclosed. Its original was subsequently no
+longer available at the Downloads path; the compact output remains a local test
+artifact. The Duel original was read for schema/session/count metadata but became
+unavailable before full validation, so its acceptance remains pending.
+
+The initial protected Preview returned HTTP 200 on health and HTTP 503 on POST
+before access configuration was present. A distinct Secret developer token was
+then configured only for `feat/motion-ai-vercel-foundation` Preview deployments;
+Production configuration was not changed. See the PR for final Preview results.
 
 ## References
 
