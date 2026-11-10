@@ -14,7 +14,7 @@ Analyze button. Those are the next slices in
 ## Local use
 
 Install dependencies from the repository root with `npm install` (or `npm ci`).
-Node.js >=22.13.0 is required.
+Use Node.js 24.x, matching the root workspace and Vercel runtime pin.
 
 Use `server/.env`. A local ignored file may already have been prepared with an
 independent developer token; the OpenAI values remain empty. If it does not exist,

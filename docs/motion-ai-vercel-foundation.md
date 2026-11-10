@@ -99,17 +99,37 @@ findings are inferred from a sampled package in this slice.
 Local checks passed: `npm run check` (191 existing unit tests + 32 backend/Functions
 tests), frontend/API builds, and two existing Duel/Training browser scenarios with
 installed Chrome. All 28 frontend build files were scanned for the actual local
-secrets and provider endpoint code; neither was present. The original 8,416,404-byte
-Training recording compacted to 64,790 request bytes and passed the Web handler as
-`training.movement`, with omissions disclosed. Its original was subsequently no
-longer available at the Downloads path; the compact output remains a local test
-artifact. The Duel original was read for schema/session/count metadata but became
-unavailable before full validation, so its acceptance remains pending.
+secrets and provider endpoint code; neither was present.
 
-The initial protected Preview returned HTTP 200 on health and HTTP 503 on POST
-before access configuration was present. A distinct Secret developer token was
-then configured only for `feat/motion-ai-vercel-foundation` Preview deployments;
-Production configuration was not changed. See the PR for final Preview results.
+Both original user recordings were validated locally and their compact packages
+were accepted by the protected Node.js 24 Preview at commit `3ba1bb4`:
+
+| Recording                                      | Original bytes | Request bytes | Session             | HTTP |
+| ---------------------------------------------- | -------------: | ------------: | ------------------- | ---: |
+| `suits-motion-capture-shaq-1794326230053.json` |      8,416,404 |        64,815 | `training.movement` |  200 |
+| `suits-motion-capture-shaq-1794326347006.json` |      7,152,843 |        64,112 | `duel`              |  200 |
+
+Request sizes include the compact JSON envelope and trailing newline. Training
+retains 120 of 867 events and 28 of 628 samples; Duel retains 120 of 745 events and
+25 of 477 samples. Omissions are disclosed; these are preparation results, not
+full-trace command reliability or motion findings. Both return `aiCalled: false`.
+Artifacts are under ignored `playtest/motion-ai-vercel/`.
+
+Preview: [tested deployment](https://suits-basketball-game-7lah8ghuu-cikadrazas-projects.vercel.app).
+Health returned 200; missing developer credentials returned 401; browser Origin
+returned 403. The initial deployment also returned 503 before access configuration
+was present. A real browser opened the Preview game, selected Free Movement and
+captured `playtest/motion-ai-vercel/preview-free-movement.png` with no page errors.
+A distinct Secret developer token is scoped only to this feature branch's Preview;
+the user's Preview configuration remains available to other branches. Production
+configuration was not changed. [Draft PR #7](https://github.com/CikaDraza/suits-basketball-game/pull/7)
+remains open for visual acceptance; no merge or production promotion is included.
+
+The branch-only developer credential is saved locally in ignored
+`server/.env.preview.local` with permissions `0600`; it contains no OpenAI key.
+The automation bypass automatically created by the CLI for these tests was revoked
+after verification. Deployment Protection remains enabled. No credentials or raw
+recordings are part of this PR.
 
 ## References
 
