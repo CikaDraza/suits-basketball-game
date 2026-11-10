@@ -29,6 +29,10 @@ export function useDuelTestSeam(): void {
       getHandContacts: (slot) =>
         readHandContacts(scene.getObjectByName(`character-${slot}`) ?? scene),
       inspectCharacter: (view) => useHarnessStore.getState().setInspectionView(view),
+      setDefensivePose: (slot, pose) => {
+        if (useHarnessStore.getState().testMode)
+          useHarnessStore.getState().setDefensivePose(slot, pose, duel.time);
+      },
       setHandling: (slot, mode, hand) => {
         if (!useHarnessStore.getState().testMode || duel.owner !== slot) return;
         if (mode === 'hold') useInputStore.getState().flush();
@@ -132,6 +136,8 @@ export function useDuelTestSeam(): void {
       },
       step: wait,
       reset: async (seed = 42, scenario) => {
+        useHarnessStore.getState().setDefensivePose(0, null);
+        useHarnessStore.getState().setDefensivePose(1, null);
         useHarnessStore.getState().setSeed(seed);
         useGameStore.getState().reset();
         resetDuel(seed, scenario);

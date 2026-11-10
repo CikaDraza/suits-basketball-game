@@ -39,6 +39,14 @@ export function createHandContactPose(model: Object3D, legend: Legend) {
   }));
   return {
     arms,
+    release() {
+      // Explicit defensive ownership must not fight a fading ball-contact pose.
+      for (let i = 0; i < arms.length; i++) {
+        weights[i] = 0;
+        memory[i].role = 'none';
+        arms[i].debug.weight = 0;
+      }
+    },
     reset() {
       arms.forEach((a) => a.resetHand());
     },

@@ -106,9 +106,10 @@ export function CameraRig() {
   useFrame((_, dt) => {
     if (inspection) {
       const p = duel.players[0],
-        angle = p.angle + (inspection === 'side' ? Math.PI / 2 : 0);
-      camera.position.set(p.x + Math.sin(angle) * 3.2, 1.6, p.z + Math.cos(angle) * 3.2);
-      camera.lookAt(p.x, 1.15, p.z);
+        angle =
+          p.angle + (inspection === 'side' ? Math.PI / 2 : inspection === 'rear' ? Math.PI : 0);
+      camera.position.set(p.x + Math.sin(angle) * 5, 1.5, p.z + Math.cos(angle) * 5);
+      camera.lookAt(p.x, 1.35, p.z);
       camera.updateMatrixWorld();
       return;
     }

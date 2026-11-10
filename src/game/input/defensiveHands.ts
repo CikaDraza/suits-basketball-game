@@ -5,7 +5,8 @@ import {
   type SkillVector,
 } from './skillGesture';
 
-export type DefensiveHands = 'none' | 'left' | 'right' | 'up' | 'wave' | 'brace' | 'push';
+export type DefensiveHands = 'none' | 'left' | 'right' | 'wide' | 'up' | 'wave' | 'brace' | 'push';
+export type DefensiveArmMode = DefensiveHands | 'ready';
 
 /** Held input: follow the current body/camera frame, rather than queueing a dribble edge. */
 export function readDefensiveHands(

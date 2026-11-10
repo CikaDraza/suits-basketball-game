@@ -3,6 +3,7 @@ import { useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
 import { useHarnessStore } from '../state/harnessStore';
 import type { CharacterPoseSnapshot } from './characterPose';
+import type { DefensiveArmMode } from '../input/defensiveHands';
 
 export type TestSeam = {
   ready: boolean;
@@ -14,7 +15,8 @@ export type TestSeam = {
   setHandling?: (slot: 0 | 1, mode: 'hold' | 'dribble', hand: 1 | -1) => void;
   /** Test fixture only: production facing remains owned by gameplay. */
   setFacing?: (slot: 0 | 1, angle: number) => void;
-  inspectCharacter?: (view: 'front' | 'side' | null) => void;
+  inspectCharacter?: (view: 'front' | 'side' | 'rear' | null) => void;
+  setDefensivePose?: (slot: 0 | 1, pose: DefensiveArmMode | null) => void;
   version: string;
   mode: 'dev' | 'test' | 'prod';
   getState: () => Record<string, unknown>;

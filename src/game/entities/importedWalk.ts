@@ -62,6 +62,7 @@ export function createImportedWalk(model: Object3D, clips: readonly AnimationCli
     time: start,
     cycleDistance,
     applied: 0,
+    appliedArms: 0,
   };
   return {
     debug,
@@ -70,6 +71,7 @@ export function createImportedWalk(model: Object3D, clips: readonly AnimationCli
     },
     step(dt: number, forwardTravel: number, eligible: boolean, reset: boolean) {
       debug.applied = 0;
+      debug.appliedArms = 0;
       if (reset) {
         debug.weight = 0;
         debug.phase = 0;
@@ -82,12 +84,14 @@ export function createImportedWalk(model: Object3D, clips: readonly AnimationCli
     },
     apply(relaxedArms: boolean) {
       debug.applied = 0;
+      debug.appliedArms = 0;
       if (debug.weight === 0) return;
       for (const track of tracks) {
         if (track.arm && !relaxedArms) continue;
         quaternion.fromArray(track.sample.evaluate(debug.time)).normalize();
         track.bone.quaternion.slerp(quaternion, debug.weight);
         debug.applied++;
+        if (track.arm) debug.appliedArms++;
       }
     },
   };

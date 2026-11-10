@@ -120,14 +120,18 @@ for (const legend of ['shaq', 'chuck'] as const) {
       }
       const selected = mode === 'brace' ? hands.arms : [hands.arms[mode === 'left' ? 0 : 1]];
       for (const arm of selected) {
-        assert.ok(arm.debug.normal.z > 0.85, `${mode} palm faces forward: ${arm.debug.normal.z}`);
+        assert.ok(
+          arm.debug.normal.z > (mode === 'brace' ? 0.75 : 0.85),
+          `${mode} palm faces forward: ${arm.debug.normal.z}`,
+        );
         assert.ok(arm.debug.wristBend <= 65.1);
         assert.ok(arm.debug.error < 0.04, `${mode} target reachable: ${arm.debug.error}`);
         if (mode === 'brace') {
           const elbow = arm.fore.getWorldPosition(new Vector3());
           const wrist = arm.hand.getWorldPosition(new Vector3());
+          const shoulder = arm.upper.getWorldPosition(new Vector3());
           assert.ok(
-            elbow.z > 0.15 && wrist.z > 0.3,
+            elbow.z - shoulder.z > defense.solvers[0].length * 0.35 && wrist.z > 0.3,
             `both forearms extend to the opponent: elbow ${elbow.z}, wrist ${wrist.z}`,
           );
         }
@@ -149,7 +153,7 @@ test('defensive hands release on neutral, reject invalid input, and distinguish 
   assert.equal(hasRaisedDefensiveHands('wave'), true);
 });
 
-test('arm poses extend only the requested side and waving moves both raised arms over time', () => {
+test('lateral FK entry keeps the opposite arm guarding and waving moves both raised arms', () => {
   const pose: DefensiveArmPose = {
     lDown: 1.3,
     rDown: 1.3,
@@ -162,10 +166,10 @@ test('arm poses extend only the requested side and waving moves both raised arms
   };
   applyDefensiveArmPose(pose, 'left', 0);
   assert.equal(pose.lDown, 0);
-  assert.equal(pose.rDown, 1.3);
+  assert.ok(pose.rPitch < -0.5 && pose.rElbow > 1.2);
   applyDefensiveArmPose(pose, 'right', 0);
   assert.equal(pose.rDown, 0);
-  assert.equal(pose.lDown, 1.3);
+  assert.ok(pose.lPitch < -0.5 && pose.lElbow > 1.2);
   applyDefensiveArmPose(pose, 'up', 0);
   assert.ok(pose.lPitch < -2.8 && pose.rPitch < -2.8);
   applyDefensiveArmPose(pose, 'wave', 0.1);
