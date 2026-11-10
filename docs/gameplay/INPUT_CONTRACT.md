@@ -33,7 +33,11 @@ kamernoj projekciji i orijentaciji igrača, sa četiri remapabilna Axis smera.
 Zasebne gamepad akcije HAND_LEFT/HAND_RIGHT više se ne nude niti izvršavaju;
 Z/C i touch zadržavaju izbor ruke. Stari gamepad hand Axis prelaze u odgovarajući
 bočni smer, a hand dugmad se uklanjaju. Između poteza palica mora proći kroz neutralu.
-U odbrani se desna palica čita kao držana komanda relativno trenutnom telu i kameri:
+Desna palica koristi četiri jednaka ekranska sektora od 90° oko vidljivog pravca
+tela. Referenca je yaw/nagib stvarne renderovane kamere; nagib projektuje telo,
+ne razvlači ulazni stick. Leva palica zadržava postojeću referencu i obradu.
+Detalji i izmerene vrednosti su u [RIGHT-STICK-RELATIVE-1](../right-stick-relative-1.md).
+U odbrani se komanda i anatomska strana zaključavaju pri aktiviranju do neutrale:
 levo/desno otvara odgovarajuću ruku dlanom napred, napred podiže obe, a dva brza
 poteza napred uključuju mahanje. Nazad postavlja obe podlaktice za kontakt, a dva
 brza poteza nazad izvršavaju jedno fizičko odgurivanje protivnika ispred u dometu.

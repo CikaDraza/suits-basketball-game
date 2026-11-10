@@ -67,15 +67,15 @@ async function selectVisibleHand(page: Page, hand: 1 | -1, horizontal = 2, verti
       const p = window.__TEST__!.getState().player as { x: number; z: number; angle: number };
       const center = window.__TEST__!.project!([p.x, 1.3, p.z]);
       const side = window.__TEST__!.project!([
-        p.x + hand * Math.cos(p.angle),
+        p.x + Math.sin(p.angle),
         1.3,
-        p.z - hand * Math.sin(p.angle),
+        p.z + Math.cos(p.angle),
       ]);
       const dx = side.x - center.x,
         dy = side.y - center.y,
         length = Math.hypot(dx, dy);
-      window.__mockPad.axes[horizontal] = dx / length;
-      window.__mockPad.axes[vertical] = dy / length;
+      window.__mockPad.axes[horizontal] = (hand * dy) / length;
+      window.__mockPad.axes[vertical] = (-hand * dx) / length;
     },
     { hand, horizontal, vertical },
   );

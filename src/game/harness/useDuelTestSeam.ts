@@ -9,6 +9,7 @@ import { useHarnessStore } from '../state/harnessStore';
 import { extendTestSeam } from './exposeTestSeam';
 import { readCharacterPose, readHandContacts } from './characterPose';
 import { locomotionDebug } from '../entities/locomotionDebug';
+import { rightStickDebug } from '../input/rightStickDebug';
 
 /** Keep test adapters out of the scene's rendering and simulation components. */
 export function useDuelTestSeam(): void {
@@ -25,6 +26,7 @@ export function useDuelTestSeam(): void {
     const renderedBall = new Vector3();
     const seam = extendTestSeam({
       ready: true,
+      getRightStickDebug: (slot) => structuredClone(rightStickDebug[slot]),
       getLocomotion: (slot) => structuredClone(locomotionDebug[slot]),
       getHandContacts: (slot) =>
         readHandContacts(scene.getObjectByName(`character-${slot}`) ?? scene),

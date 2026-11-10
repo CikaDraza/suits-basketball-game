@@ -10,44 +10,84 @@ import { createDefensiveArmContact } from '../src/game/entities/defensiveArmCont
 import { createHandContactPose } from '../src/game/entities/handContactPose';
 import { config } from '../src/game/data/gameConfig';
 import { loadCharacter } from './helpers/loadCharacter';
-import { Vector3 } from 'three';
-import { createMovementTransform } from '../src/game/simulation/coordinates';
+import { PerspectiveCamera, Vector3 } from 'three';
 import {
   applyDefensiveArmPose,
   type DefensiveArmPose,
 } from '../src/game/entities/defensiveArmPose';
 
-test('held defensive arms use anatomical directions across eight body facings and camera rotations/pitches', () => {
+test('defensive actions use equal visible sectors and preserve accepted anatomical sides through turns', () => {
   for (const yaw of [0, 0.6, Math.PI / 2, Math.PI, -1.2])
-    for (const pitch of [0.15, 0.4, 1])
+    for (const pitch of [0.15, 0.4, 0.999999])
       for (let i = 0; i < 8; i++) {
-        const facing = (i * Math.PI) / 4;
-        const project = (x: number, z: number) => {
-          const vector = createMovementTransform(yaw).worldToStick(x, z);
-          vector.z *= pitch;
-          const length = Math.hypot(vector.x, vector.z);
-          return { x: vector.x / length, z: vector.z / length };
-        };
-        for (const [side, expected] of [
-          [1, 'left'],
-          [-1, 'right'],
+        const facing = (i * Math.PI) / 4,
+          camera = new PerspectiveCamera(),
+          flat = Math.sqrt(1 - pitch * pitch);
+        camera.position.set(Math.sin(yaw) * flat, pitch, Math.cos(yaw) * flat);
+        camera.lookAt(0, 0, 0);
+        camera.updateMatrixWorld(true);
+        const forward = new Vector3(Math.sin(facing), 0, Math.cos(facing)).transformDirection(
+          camera.matrixWorldInverse,
+        );
+        const angle = Math.atan2(forward.y, forward.x);
+        for (const [offset, expected] of [
+          [0, 'up'],
+          [Math.PI, 'brace'],
+          [Math.PI / 2, 'left'],
+          [-Math.PI / 2, 'right'],
         ] as const) {
-          const vector = project(side * Math.cos(facing), -side * Math.sin(facing));
+          const vector = { x: Math.cos(angle + offset), z: Math.sin(angle + offset) };
           assert.equal(readDefensiveHands(vector, facing, yaw, pitch), expected);
           assert.equal(
             readDefensiveHands(vector, facing + Math.PI, yaw, pitch, expected),
-            expected === 'left' ? 'right' : 'left',
+            expected,
           );
         }
-        assert.equal(
-          readDefensiveHands(project(Math.sin(facing), Math.cos(facing)), facing, yaw, pitch),
-          'up',
-        );
-        assert.equal(
-          readDefensiveHands(project(-Math.sin(facing), -Math.cos(facing)), facing, yaw, pitch),
-          'brace',
-        );
       }
+});
+
+test('accepted defense locks direction, side and facing until neutral and rejects held input after lifecycle changes', () => {
+  const input = createDefensiveHandInput(0.32);
+  const base = {
+    device: 'pad',
+    version: 0,
+    enabled: true,
+    time: 1,
+    vector: { x: 0, z: 0 },
+    facing: 0,
+    cameraAngle: 0,
+    verticalScale: 1,
+  };
+  assert.equal(
+    input.sample({ ...base, vector: { x: 1, z: 0 } }),
+    'none',
+    'startup requires neutral',
+  );
+  input.sample(base);
+  assert.equal(input.sample({ ...base, time: 1.1, vector: { x: 1, z: 0 } }), 'left');
+  for (const facing of [Math.PI / 4, Math.PI / 2, Math.PI, Math.PI * 2])
+    assert.equal(
+      input.sample({ ...base, time: 1.2, facing, cameraAngle: 1.2, vector: { x: -0.4, z: 0 } }),
+      'left',
+    );
+  assert.equal(input.debug.facing, 0);
+  input.sample({ ...base, time: 1.3, facing: Math.PI });
+  assert.equal(
+    input.sample({ ...base, time: 1.4, facing: Math.PI, vector: { x: 1, z: 0 } }),
+    'right',
+  );
+  for (const lifecycle of [{ enabled: false }, { version: 1 }, { device: 'another-pad' }]) {
+    input.sample({ ...base, time: 2, vector: { x: 1, z: 0 }, ...lifecycle });
+    assert.equal(
+      input.sample({ ...base, time: 2.1, vector: { x: 1, z: 0 }, ...lifecycle, enabled: true }),
+      'none',
+    );
+    input.sample({ ...base, time: 2.2, ...lifecycle, enabled: true });
+    assert.equal(
+      input.sample({ ...base, time: 2.3, vector: { x: 1, z: 0 }, ...lifecycle, enabled: true }),
+      'left',
+    );
+  }
 });
 
 test('two forward flicks wave, held rear braces, and two rear flicks buffer exactly one shove', () => {

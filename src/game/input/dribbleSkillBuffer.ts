@@ -35,7 +35,13 @@ export function createDribbleSkillBuffer(
   let lastBehindAt = -Infinity;
   let previousTime = -Infinity;
   const pending: HandGesture[] = [];
-  const debug = { activations: 0, rejected: 0, last: null as HandGesture | null, pending: 0 };
+  const debug = {
+    activations: 0,
+    rejected: 0,
+    last: null as HandGesture | null,
+    accepted: null as HandGesture | null,
+    pending: 0,
+  };
   const clear = () => {
     gesture.reset();
     previousHand = 0;
@@ -43,9 +49,16 @@ export function createDribbleSkillBuffer(
     lastBehindAt = previousTime = -Infinity;
     pending.length = 0;
     debug.pending = 0;
+    debug.accepted = null;
   };
   return {
     debug,
+    get armed() {
+      return gesture.armed;
+    },
+    get phase(): 'neutral-required' | 'armed' | 'held' {
+      return !ready ? 'neutral-required' : gesture.armed ? 'armed' : 'held';
+    },
     sample(sample: SkillSample) {
       if (sample.device !== device || sample.version !== version) {
         clear();
@@ -90,8 +103,12 @@ export function createDribbleSkillBuffer(
           debug.pending = 0;
         }
       }
-      if (!sample.eligible) lastBehindAt = -Infinity;
+      if (!sample.eligible) {
+        lastBehindAt = -Infinity;
+        debug.accepted = null;
+      }
       if (!event) return;
+      debug.accepted = null;
       debug.activations++;
       debug.last = { ...event, sequence: debug.activations };
       if (sample.crossing && !isRearUpgrade(event)) {
@@ -103,6 +120,7 @@ export function createDribbleSkillBuffer(
         // An active rear crossover accepts only the second quick rear flick.
         pending.length = 0;
         pending.push(debug.last);
+        debug.accepted = debug.last;
         debug.pending = 1;
       }
     },

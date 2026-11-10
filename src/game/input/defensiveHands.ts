@@ -3,11 +3,12 @@ import {
   resolveSkillDirection,
   SKILL_GESTURE_DEFAULTS,
   type SkillVector,
+  type HandGesture,
 } from './skillGesture';
 
 export type DefensiveHands = 'none' | 'left' | 'right' | 'up' | 'wave' | 'brace' | 'push';
 
-/** Held input: follow the current body/camera frame, rather than queueing a dribble edge. */
+/** Neutral releases an accepted action; held input preserves its anatomical side. */
 export function readDefensiveHands(
   vector: SkillVector,
   facing: number,
@@ -18,7 +19,13 @@ export function readDefensiveHands(
   const magnitude = Math.hypot(vector.x, vector.z);
   const threshold =
     previous === 'none' ? SKILL_GESTURE_DEFAULTS.activate : SKILL_GESTURE_DEFAULTS.release;
-  if (!Number.isFinite(magnitude) || magnitude <= threshold) return 'none';
+  if (
+    ![magnitude, facing, cameraAngle, verticalScale].every(Number.isFinite) ||
+    verticalScale <= 0 ||
+    (previous === 'none' ? magnitude < threshold : magnitude <= threshold)
+  )
+    return 'none';
+  if (previous !== 'none') return previous;
   const direction = resolveSkillDirection(vector, facing, cameraAngle, verticalScale);
   if (!direction) return 'none';
   return direction.kind === 'front'
@@ -33,20 +40,29 @@ export function readDefensiveHands(
 export function createDefensiveHandInput(doubleWindow: number) {
   const gesture = createSkillGesture(0);
   let identity = '',
-    previous: DefensiveHands = 'none',
     lastKind = '',
-    lastAt = -Infinity;
-  let waving = false;
+    lastAt = -Infinity,
+    previousTime = -Infinity;
   let pending: { facing: number; time: number } | null = null;
+  const debug = {
+    locked: 'none' as DefensiveHands,
+    facing: null as number | null,
+    cameraAngle: null as number | null,
+    phase: 'neutral-required' as 'neutral-required' | 'armed' | 'held',
+    last: null as HandGesture | null,
+  };
   const clear = () => {
     gesture.reset();
-    previous = 'none';
+    debug.locked = 'none';
+    debug.facing = debug.cameraAngle = null;
+    debug.phase = 'neutral-required';
+    debug.last = null;
     lastKind = '';
-    lastAt = -Infinity;
-    waving = false;
+    lastAt = previousTime = -Infinity;
     pending = null;
   };
   return {
+    debug,
     sample(sample: {
       device: string | null;
       version: number;
@@ -62,30 +78,51 @@ export function createDefensiveHandInput(doubleWindow: number) {
         clear();
         identity = nextIdentity;
       }
-      if (!sample.enabled || !sample.device || !Number.isFinite(sample.time)) {
+      if (
+        !sample.enabled ||
+        !sample.device ||
+        ![
+          sample.time,
+          sample.vector.x,
+          sample.vector.z,
+          sample.facing,
+          sample.cameraAngle,
+          sample.verticalScale,
+        ].every(Number.isFinite) ||
+        sample.verticalScale <= 0
+      ) {
         clear();
         return 'none';
       }
-      if (sample.time < lastAt) clear();
-      const held = readDefensiveHands(
-        sample.vector,
-        sample.facing,
-        sample.cameraAngle,
-        sample.verticalScale,
-        previous,
-      );
-      previous = held;
-      if (held !== 'up') waving = false;
+      if (sample.time < previousTime) clear();
+      previousTime = sample.time;
       const event = gesture.sample(sample.vector, sample.facing, sample);
+      if (Math.hypot(sample.vector.x, sample.vector.z) <= SKILL_GESTURE_DEFAULTS.release) {
+        debug.locked = 'none';
+        debug.facing = debug.cameraAngle = null;
+      }
       if (event) {
         const double = event.kind === lastKind && sample.time - lastAt <= doubleWindow;
-        if (double && event.kind === 'front') waving = true;
+        debug.locked =
+          event.kind === 'front'
+            ? double
+              ? 'wave'
+              : 'up'
+            : event.kind === 'behind'
+              ? 'brace'
+              : event.hand === 1
+                ? 'left'
+                : 'right';
+        debug.facing = event.facing;
+        debug.cameraAngle = sample.cameraAngle;
+        debug.last = event;
         if (double && event.kind === 'behind')
           pending = { facing: event.facing, time: sample.time };
         lastKind = double ? '' : event.kind;
         lastAt = double ? -Infinity : sample.time;
       }
-      return held === 'up' && waving ? 'wave' : held;
+      debug.phase = debug.locked !== 'none' ? 'held' : gesture.armed ? 'armed' : 'neutral-required';
+      return debug.locked;
     },
     takePush(time: number) {
       const event = pending;

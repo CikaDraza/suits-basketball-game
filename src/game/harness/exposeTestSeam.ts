@@ -3,9 +3,11 @@ import { useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
 import { useHarnessStore } from '../state/harnessStore';
 import type { CharacterPoseSnapshot } from './characterPose';
+import type { RightStickSnapshot } from '../input/rightStickDebug';
 
 export type TestSeam = {
   ready: boolean;
+  getRightStickDebug?: (slot: 0 | 1) => RightStickSnapshot | null;
   requestInboundPass?: (receiver?: 0 | 1) => void;
   getCharacterPose?: (slot: 0 | 1) => CharacterPoseSnapshot | null;
   getHandContacts?: (slot: 0 | 1) => CharacterPoseSnapshot['hands'];
@@ -110,6 +112,7 @@ function createDefaultTestSeam(): TestSeam {
       if (flag === 'colliders') harnessStore.getState().setDebugColliders(value);
       if (flag === 'handContacts') harnessStore.getState().setDebugHands(value);
       if (flag === 'footContacts') harnessStore.getState().setDebugFeet(value);
+      if (flag === 'rightStick') harnessStore.getState().setDebugRightStick(value);
       if (flag === 'testMode') harnessStore.getState().setTestMode(value);
     },
   };
