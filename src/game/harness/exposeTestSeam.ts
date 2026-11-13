@@ -6,8 +6,10 @@ import { useHarnessStore } from '../state/harnessStore';
 import type { CharacterPoseSnapshot } from './characterPose';
 import type { DefensiveArmMode } from '../input/defensiveHands';
 import type { RightStickSnapshot } from '../input/rightStickDebug';
+import type { motionAudit } from '../diagnostics/motionAudit';
 
 export type TestSeam = {
+  getGameplayDebug?: (slot: 0 | 1) => ReturnType<typeof motionAudit.view>;
   ready: boolean;
   diagnostics?: {
     start: () => void;
@@ -122,6 +124,7 @@ function createDefaultTestSeam(): TestSeam {
       if (flag === 'handContacts') harnessStore.getState().setDebugHands(value);
       if (flag === 'footContacts') harnessStore.getState().setDebugFeet(value);
       if (flag === 'rightStick') harnessStore.getState().setDebugRightStick(value);
+      if (flag === 'gameplay') harnessStore.getState().setDebugRightStick(value);
       if (flag === 'testMode') harnessStore.getState().setTestMode(value);
     },
   };

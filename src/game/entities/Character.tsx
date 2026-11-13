@@ -15,7 +15,7 @@ import {
   type Skeleton,
 } from 'three';
 import { config, type Legend } from '../data/gameConfig';
-import { MODEL_PATHS } from '../assets/manifest';
+import { ANIMATION_PATHS, MODEL_PATHS } from '../assets/manifest';
 import { clamp, dampingFactor } from '../utils/math';
 import { isSimulationRunning } from '../simulation/isSimulationRunning';
 import { useHarnessStore } from '../state/harnessStore';
@@ -36,6 +36,7 @@ import { createGaitState, stepGait, type GaitTuning } from './gait';
 import { deriveStates, type CallForPassFallback } from './posture';
 import { locomotionDebug } from './locomotionDebug';
 import { createImportedWalk, isolateWalkingCharacter } from './importedWalk';
+import { createImportedDefense } from './importedDefense';
 
 Object.values(MODEL_PATHS).forEach((path) => useGLTF.preload(path));
 
@@ -229,8 +230,10 @@ export function Character({ index, legend }: CharacterProps) {
   const inspection = useHarnessStore((state) => state.inspectionView);
   const hasImportedWalk = legend === 'shaq';
   const modelPath = MODEL_PATHS[legend];
-  const gltf = useGLTF(modelPath);
-  const { model, rig, face, skeletons, groundFeet, legRig, hands, defenseArms, walk } =
+  const [gltf, defenseAsset] = useGLTF(
+    hasImportedWalk ? [modelPath, ANIMATION_PATHS.shaq.defense] : [modelPath],
+  );
+  const { model, rig, face, skeletons, groundFeet, legRig, hands, defenseArms, walk, defense } =
     useMemo(() => {
       const model = cloneSkinned(gltf.scene);
       if (hasImportedWalk) isolateWalkingCharacter(model);
@@ -248,6 +251,9 @@ export function Character({ index, legend }: CharacterProps) {
         face: createFaceController(model),
         skeletons,
         walk: hasImportedWalk ? createImportedWalk(model, gltf.animations) : null,
+        defense: defenseAsset
+          ? createImportedDefense(model, defenseAsset.scene, defenseAsset.animations)
+          : null,
         // measured in the detached bind pose, before any posing
         legRig: createLegRig(model, rig.bones),
         hands,
@@ -260,7 +266,7 @@ export function Character({ index, legend }: CharacterProps) {
           { skinnedContacts: hasImportedWalk },
         ),
       };
-    }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath]);
+    }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath, defenseAsset]);
   const shadowTexture = useMemo(createShadowTexture, []);
   useEffect(() => () => shadowTexture.dispose(), [shadowTexture]);
   useEffect(
@@ -494,6 +500,21 @@ export function Character({ index, legend }: CharacterProps) {
     const mv = st.moveWeight * clamp(gait.speed / config.player[legend].speed, 0, 1);
     const along = gait.speed > 1e-3 ? gait.forwardSpeed / gait.speed : 0; // +1 fwd, −1 back
 
+    defense?.step(
+      frameDt,
+      p.mode === 'post' && !controlled,
+      grounded &&
+        !controlled &&
+        !receiving &&
+        !awaitingPass &&
+        (p.mode === 'idle' || p.mode === 'post') &&
+        p.charge === 0 &&
+        p.jab === 0 &&
+        p.bite === 0,
+      gait.moving,
+      reset,
+    );
+    defense?.resetPose();
     walk?.step(
       frameDt,
       travelX * fx + travelZ * fz,
@@ -926,6 +947,13 @@ export function Character({ index, legend }: CharacterProps) {
       // The capsule remains authoritative. Hand IK below sees the final grounded torso.
       groundFeet?.(groundPoint.y);
     }
+    if (defense && defense.debug.phase !== 'inactive') {
+      defense.apply();
+      model.updateWorldMatrix(true, true);
+      // Ground the blended FK pose without applying root motion to physics.
+      // During movement the lower layer fades back to the existing foot IK.
+      if (defense.debug.appliedLower > 0) groundFeet?.(groundPoint.y);
+    }
     locomotionDebug[index] = {
       locomotion: gait.locomotion,
       posture: states.posture,
@@ -943,6 +971,7 @@ export function Character({ index, legend }: CharacterProps) {
       stride,
       grounded: grounded && st.groundReady,
       ...(walk ? { importedWalk: { ...walk.debug } } : {}),
+      ...(defense ? { importedDefense: { ...defense.debug } } : {}),
       feet: gait.feet.map((f, i) => ({
         planted: !f.swinging,
         target: { x: f.target.x, y: f.target.y, z: f.target.z },
@@ -979,7 +1008,12 @@ export function Character({ index, legend }: CharacterProps) {
         1 -
           smoothUnit((ballPoint.distanceTo(catchPoint) - config.inbound.passing.catchRadius) / 0.4),
       );
-    if (defensiveArmsEnabled && (defensiveHands !== 'none' || defenseArms.active)) hands.release();
+    const importedDefenseActive = defense != null && defense.debug.phase !== 'inactive';
+    if (
+      (defensiveArmsEnabled && (defensiveHands !== 'none' || defenseArms.active)) ||
+      importedDefenseActive
+    )
+      hands.release();
     hands.update(
       incoming ? incomingPoint : ballPoint,
       controlled,
@@ -996,7 +1030,8 @@ export function Character({ index, legend }: CharacterProps) {
       p.angle,
       opponent,
       Math.min(rawDt, 0.25),
-      defensiveArmsEnabled,
+      defensiveArmsEnabled &&
+        !(importedDefenseActive && (defensiveHands === 'none' || defensiveHands === 'ready')),
       pushAge / config.defense.hands.pushDuration,
       t,
     );
@@ -1057,18 +1092,24 @@ export function Character({ index, legend }: CharacterProps) {
           layers: {
             base: 'procedural-fk',
             legs:
-              walk && walk.debug.weight > 0
-                ? `imported-walk:${walk.debug.clip}`
-                : 'procedural-gait',
+              defense && defense.debug.appliedLower > 0
+                ? `imported-defense:${defense.debug.clip}`
+                : walk && walk.debug.weight > 0
+                  ? `imported-walk:${walk.debug.clip}`
+                  : 'procedural-gait',
             feet: 'foot-grounding',
-            torso: 'procedural-posture',
+            torso: importedDefenseActive
+              ? `imported-defense:${defense.debug.clip}`
+              : 'procedural-posture',
             arms:
               defensiveArmsEnabled && defenseArms.active
                 ? 'defensive-arm-ik'
                 : controlled || incoming
                   ? 'ball-hand-ik'
-                  : 'procedural-fk',
-            head: 'procedural-look',
+                  : importedDefenseActive
+                    ? `imported-defense:${defense.debug.clip}`
+                    : 'procedural-fk',
+            head: importedDefenseActive ? 'imported-defense' : 'procedural-look',
           },
         },
         rig.bones,

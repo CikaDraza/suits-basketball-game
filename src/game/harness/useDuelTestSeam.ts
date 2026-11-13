@@ -1,4 +1,5 @@
 import { motionRecorder } from '../diagnostics/recorder';
+import { motionAudit } from '../diagnostics/motionAudit';
 import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Vector3 } from 'three';
@@ -35,6 +36,7 @@ export function useDuelTestSeam(): void {
               export: (recentOnly = false) => motionRecorder.export(recentOnly),
               status: () => motionRecorder.status(),
             },
+            getGameplayDebug: (slot: 0 | 1) => structuredClone(motionAudit.view(slot)),
           }
         : {}),
       getRightStickDebug: (slot) => structuredClone(rightStickDebug[slot]),

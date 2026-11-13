@@ -1,5 +1,6 @@
 import type { Locomotion } from './gait';
 import type { Posture, UpperBody } from './posture';
+import type { createImportedDefense } from './importedDefense';
 
 type Point = { x: number; y: number; z: number };
 
@@ -32,6 +33,7 @@ export interface LocomotionSnapshot {
     applied: number;
     appliedArms: number;
   };
+  importedDefense?: ReturnType<typeof createImportedDefense>['debug'];
   feet: { planted: boolean; target: Point; neutral: Point; lift: number; yaw: number }[];
 }
 

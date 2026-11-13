@@ -10,7 +10,7 @@ const degrees = (angle: number) => `${((angle * 180) / Math.PI).toFixed(1)}°`;
 const vector = (v: { x: number; z: number }) => `${v.x.toFixed(3)}, ${v.z.toFixed(3)}`;
 
 /** Development-only DOM observer; sampling never writes to the game or starts a 3D loop. */
-export function RightStickDebugOverlay() {
+export function GameplayDebugOverlay() {
   const visible = useHarnessStore((s) => s.debugRightStick);
   const movement = useGameStore((s) => isFreeMovement(s.session));
   const playing = useGameStore((s) => s.screen === 'playing');
@@ -26,7 +26,8 @@ export function RightStickDebugOverlay() {
   const [tab, setTab] = useState<'audit' | 'rs'>('audit');
   const [snapshot, setSnapshot] = useState<RightStickSnapshot | null>(null);
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('rightStickDebug'))
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('gameplayDebug') || params.has('rightStickDebug'))
       useHarnessStore.getState().setDebugRightStick(true);
   }, []);
   useEffect(() => {
@@ -40,7 +41,7 @@ export function RightStickDebugOverlay() {
   return (
     <aside
       className="right-stick-debug"
-      aria-label="Right-stick diagnostics"
+      aria-label="Gameplay diagnostics"
       onPointerDown={(event) => {
         if (event.target instanceof HTMLButtonElement) event.preventDefault();
       }}
@@ -50,15 +51,15 @@ export function RightStickDebugOverlay() {
         aria-expanded={visible}
         onClick={() => useHarnessStore.getState().setDebugRightStick(!visible)}
       >
-        RS debug {recording ? '● REC ' : ''}
+        Gameplay Debug {recording ? '● REC ' : ''}
         {visible ? '−' : '+'}
       </button>
       {visible && (
         <div className="right-stick-debug-panel">
-          <h2>SUITS MOTION DIAGNOSTICS</h2>
+          <h2>SUITS GAMEPLAY DEBUG</h2>
           <div className="motion-tabs" role="group" aria-label="Diagnostic views">
             <button type="button" aria-pressed={tab === 'audit'} onClick={() => setTab('audit')}>
-              AUDIT
+              GAMEPLAY
             </button>
             <button type="button" aria-pressed={tab === 'rs'} onClick={() => setTab('rs')}>
               RS DETAILS
@@ -75,11 +76,12 @@ export function RightStickDebugOverlay() {
             </select>
           </label>
           <MotionAuditPanel
+            key={movement ? 0 : slot}
             slot={movement ? 0 : slot}
             snapshot={snapshot}
             details={tab === 'audit'}
           />
-          {snapshot && (
+          {tab === 'rs' && snapshot && (
             <strong data-testid="right-stick-action">
               {snapshot.legend} · {snapshot.context} · {snapshot.selected}
             </strong>

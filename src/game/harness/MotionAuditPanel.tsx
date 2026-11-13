@@ -3,6 +3,7 @@ import { motionRecorder } from '../diagnostics/recorder';
 import { motionAudit } from '../diagnostics/motionAudit';
 import { useGameStore } from '../state/gameStore';
 import type { RightStickSnapshot } from '../input/rightStickDebug';
+import { GameplayCommandList } from './GameplayCommandList';
 
 const vector = (v?: { x: number; z: number }) => (v ? `${v.x.toFixed(2)}, ${v.z.toFixed(2)}` : '—');
 const read = (slot: number) => ({
@@ -29,6 +30,10 @@ export function MotionAuditPanel({
     return () => window.clearInterval(timer);
   }, [slot]);
   const { status, view, timeline } = data;
+  const latest = view.commands[0];
+  const locomotion = view.animation?.locomotion;
+  const walk = locomotion?.importedWalk;
+  const defense = locomotion?.importedDefense;
   const input = view.input as {
     x: number;
     z: number;
@@ -113,13 +118,25 @@ export function MotionAuditPanel({
           <h3>COMMAND</h3>
           <dl>
             <dt>Last request</dt>
-            <dd data-testid="motion-intent">{view.decision?.action ?? 'none'}</dd>
+            <dd data-testid="motion-intent">{latest?.action ?? 'none'}</dd>
             <dt>Decision</dt>
-            <dd data-testid="motion-decision">{view.decision?.stage ?? '—'}</dd>
+            <dd data-testid="motion-decision">{latest?.decision?.stage ?? 'pending'}</dd>
             <dt>Reason</dt>
-            <dd>{view.decision?.reason ?? '—'}</dd>
+            <dd>{latest?.decision?.reason ?? '—'}</dd>
             <dt>Command ID</dt>
-            <dd>{view.decision?.commandId ?? '—'}</dd>
+            <dd>{latest?.id ?? '—'}</dd>
+            <dt>Gameplay effect</dt>
+            <dd data-testid="gameplay-effect">
+              {view.commands[0]?.execution
+                ? String(view.commands[0].execution.data.evidence ?? 'state changed')
+                : 'No execution evidence'}
+            </dd>
+            <dt>Final pose observed</dt>
+            <dd data-testid="gameplay-observed">
+              {view.commands[0]?.observation
+                ? 'yes · final Character pass'
+                : 'No correlated observation'}
+            </dd>
           </dl>
           <dl>
             <dt>Actual mode / pose</dt>
@@ -161,6 +178,12 @@ export function MotionAuditPanel({
             <dd>
               {input?.source ?? '—'} / {pad?.gate ?? 'ready'}
             </dd>
+            <dt>Last keyboard / touch</dt>
+            <dd>
+              {view.physicalInput
+                ? `${view.physicalInput.source} · ${JSON.stringify(view.physicalInput.data)}`
+                : 'none'}
+            </dd>
             <dt>Physical buttons</dt>
             <dd>
               {pad?.buttons
@@ -186,6 +209,10 @@ export function MotionAuditPanel({
           </dl>
           <h3>BODY</h3>
           <dl>
+            <dt>Posture / upper body</dt>
+            <dd data-testid="gameplay-posture">
+              {locomotion?.posture ?? '—'} / {locomotion?.upper ?? '—'}
+            </dd>
             <dt>Active mode / pose</dt>
             <dd>
               {view.animation?.mode ?? '—'} / {view.animation?.defense ?? '—'}
@@ -195,6 +222,30 @@ export function MotionAuditPanel({
             <dt>Legs / feet</dt>
             <dd>
               {view.animation?.layers.legs ?? '—'} / {view.animation?.layers.feet ?? '—'}
+            </dd>
+            <dt>Torso owner</dt>
+            <dd data-testid="gameplay-torso">{view.animation?.layers.torso ?? '—'}</dd>
+            <dt>Head owner</dt>
+            <dd>{view.animation?.layers.head ?? '—'}</dd>
+            <dt>Walk clip</dt>
+            <dd data-testid="gameplay-walk-clip">
+              {walk && walk.applied > 0
+                ? `${walk.clip} · ${(walk.weight * 100).toFixed(0)}% · phase ${walk.phase.toFixed(2)} · ${walk.applied} bones`
+                : 'inactive'}
+            </dd>
+            <dt>Defense clip</dt>
+            <dd data-testid="gameplay-defense-clip">
+              {defense && defense.applied > 0
+                ? `${defense.clip} · ${defense.phase} · ${(defense.weight * 100).toFixed(0)}% · ${defense.time.toFixed(2)} / ${defense.duration.toFixed(2)} s · ${defense.applied} bones (${defense.appliedLower} lower)`
+                : 'inactive'}
+            </dd>
+            <dt>Measured body speed</dt>
+            <dd>{locomotion ? `${locomotion.speed.toFixed(2)} m/s` : '—'}</dd>
+            <dt>Grounded / feet planted</dt>
+            <dd>
+              {locomotion
+                ? `${locomotion.grounded ? 'yes' : 'no'} / ${locomotion.feet.map((foot) => (foot.planted ? 'yes' : 'no')).join(', ')}`
+                : '—'}
             </dd>
             <dt>Locomotion / phase</dt>
             <dd>
@@ -235,6 +286,7 @@ export function MotionAuditPanel({
               {physics?.ball.control.phase.toFixed(2) ?? '—'}
             </dd>
           </dl>
+          <GameplayCommandList commands={view.commands} />
           <h3>TIMELINE · latest 20</h3>
           <ol className="motion-timeline" aria-label="Motion event timeline">
             {timeline.map((e) => (

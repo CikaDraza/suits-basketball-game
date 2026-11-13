@@ -1,4 +1,5 @@
 import { motionRecorder } from '../diagnostics/recorder';
+import { motionAudit } from '../diagnostics/motionAudit';
 import { create } from 'zustand';
 import { config, level, type Legend } from '../data/gameConfig';
 import { INITIAL_MESSAGE } from '../simulation/types';
@@ -75,13 +76,29 @@ export function createInitialHudSnapshot(session: GameSession = { kind: 'duel' }
 }
 
 function inboundRequest(state: GameStore, receiver: PlayerSlot, positioning = false) {
+  const auditId = import.meta.env?.DEV
+    ? motionAudit.request(receiver, 'inbound', { positioning })
+    : 0;
   if (
     state.screen !== 'playing' ||
     state.phase !== 'INBOUND_PHASE' ||
     state.inbound?.owner !== receiver
-  )
+  ) {
+    if (import.meta.env?.DEV)
+      motionAudit.decision(
+        receiver,
+        auditId,
+        'inbound',
+        'rejected',
+        'not-inbound-receiver-or-hud-not-ready',
+      );
     return state;
+  }
   const id = state.inboundRequestSequence + 1;
+  if (import.meta.env?.DEV) {
+    motionAudit.decision(receiver, auditId, 'inbound', 'queued');
+    motionAudit.queueInbound(id, auditId, receiver);
+  }
   return {
     inboundPassRequest: positioning ? { id, receiver, positioning: true } : { id, receiver },
     inboundRequestSequence: id,

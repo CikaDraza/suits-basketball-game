@@ -1,3 +1,5 @@
+import { gameplayCommands } from './gameplayCommands';
+
 /** UI-independent, bounded, local-only diagnostic storage. Never drives gameplay. */
 export interface DiagnosticClock {
   revision: number;
@@ -48,6 +50,7 @@ export function createMotionRecorder(
     enabled?: boolean;
     now?: () => number;
     limits?: Partial<Record<keyof typeof DIAGNOSTIC_LIMITS, number>>;
+    onEvent?: (event: DiagnosticEvent) => void;
   } = {},
 ) {
   const enabled = options.enabled ?? true;
@@ -114,6 +117,7 @@ export function createMotionRecorder(
     if (!enabled) return 0;
     const item: DiagnosticEvent = { ...stamp(), type, ...fields, data };
     append('events', item);
+    options.onEvent?.(structuredClone(item));
     return item.sequence;
   };
   return {
@@ -260,4 +264,5 @@ export function createMotionRecorder(
 }
 export const motionRecorder = /* @__PURE__ */ createMotionRecorder({
   enabled: import.meta.env?.DEV === true,
+  onEvent: import.meta.env?.DEV ? gameplayCommands.observe : undefined,
 });

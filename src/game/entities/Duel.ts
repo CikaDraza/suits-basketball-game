@@ -1054,22 +1054,7 @@ export function tickDuel(delta: number) {
           motionAudit.decision(i, command.commandId, command.action, 'rejected', 'push-cooldown');
       }
       if (inboundDown) {
-        const auditId = import.meta.env?.DEV ? motionAudit.request(i, 'inbound') : 0;
-        const previousRequest = useGameStore.getState().inboundRequestSequence;
-        if (duel.ballState === 'inbound' && i === duel.inboundOwner)
-          useGameStore.getState().requestInboundPass(i as PlayerSlot);
-        if (import.meta.env?.DEV)
-          motionAudit.decision(
-            i,
-            auditId,
-            'inbound',
-            useGameStore.getState().inboundRequestSequence > previousRequest
-              ? 'queued'
-              : 'rejected',
-            useGameStore.getState().inboundRequestSequence > previousRequest
-              ? undefined
-              : 'not-inbound-receiver-or-hud-not-ready',
-          );
+        useGameStore.getState().requestInboundPass(i as PlayerSlot);
       }
       if (qDown) {
         const auditId = import.meta.env?.DEV ? motionAudit.request(i, 'stance_or_special') : 0;
@@ -1138,7 +1123,9 @@ export function tickDuel(delta: number) {
             accepted ? 'accepted' : 'rejected',
             accepted ? undefined : duel.owner !== i ? 'not-ball-owner' : 'out-of-range',
           );
-          if (accepted) motionAudit.executed(i, auditId, auditAction);
+          // Charge/contest are measured after this tick actually changes them.
+          if (accepted && (auditAction === 'smash' || auditAction === 'intercept_window'))
+            motionAudit.executed(i, auditId, auditAction, { evidence: auditAction });
         }
       }
       if (input.r && owner && p.taps < 3) p.charge = Math.min(c.shots.raiseDuration, p.charge + dt);
@@ -1147,6 +1134,11 @@ export function tickDuel(delta: number) {
         p.mode = 'contest';
       }
       if (rUp) {
+        if (import.meta.env?.DEV) {
+          motionAudit.end(i, 'shoot_charge');
+          motionAudit.end(i, 'contest');
+          motionAudit.end(i, 'intercept_window');
+        }
         if (import.meta.env?.DEV && owner) {
           const id = motionAudit.request(i, 'shoot_release');
           motionAudit.decision(
@@ -1156,11 +1148,12 @@ export function tickDuel(delta: number) {
             p.charge >= c.shots.minHold ? 'accepted' : 'rejected',
             p.charge >= c.shots.minHold ? undefined : 'below-minimum-hold',
           );
-          if (p.charge >= c.shots.minHold)
-            motionAudit.executed(i, id, 'shoot_release', { charge: p.charge });
         }
+        const previousShots = duel.shots;
         if (p.charge >= c.shots.minHold) shoot(i);
         else p.charge = 0;
+        if (import.meta.env?.DEV && duel.shots > previousShots)
+          motionAudit.confirm(i, 'shoot_release', { evidence: 'shot-launched', mode: p.mode });
         if (p.mode === 'contest') p.mode = 'idle';
       }
       const crossing =
@@ -1183,7 +1176,6 @@ export function tickDuel(delta: number) {
           reason ? 'rejected' : 'accepted',
           reason ?? undefined,
         );
-        if (!reason) motionAudit.executed(i, id, 'hand_change');
       }
       if (owner && input.hand && p.charge === 0 && !crossing) {
         p.hand = input.hand;
@@ -1192,6 +1184,8 @@ export function tickDuel(delta: number) {
           p.jab = 0;
           duel.dribbles++;
         }
+        if (import.meta.env?.DEV)
+          motionAudit.confirm(i, 'hand_change', { evidence: 'selected-hand', hand: p.hand });
       }
       if (owner && input.skill && p.charge === 0) {
         const initialHand =
@@ -1258,15 +1252,34 @@ export function tickDuel(delta: number) {
               c.player.minMove,
               c.handling.jabTapWindow,
             );
-      if (action === 'jab' && p.jabCd <= 0) {
-        const w = stickToWorld(p.pendingMoveX, p.pendingMoveZ);
-        jab(i, w.x, w.z);
-        p.jabCd = c.handling.jabCooldown;
+      if (action === 'jab') {
+        const id = import.meta.env?.DEV ? motionAudit.request(i, 'jab') : 0;
+        const accepted = p.jabCd <= 0;
+        if (accepted) {
+          const w = stickToWorld(p.pendingMoveX, p.pendingMoveZ);
+          jab(i, w.x, w.z);
+          p.jabCd = c.handling.jabCooldown;
+        }
+        if (import.meta.env?.DEV) {
+          motionAudit.decision(
+            i,
+            id,
+            'jab',
+            accepted ? 'accepted' : 'rejected',
+            accepted ? undefined : 'jab-cooldown',
+          );
+          if (accepted) motionAudit.executed(i, id, 'jab', { evidence: 'jab-started' });
+        }
       } else if (action === 'dribble') {
         p.handling = 'dribble';
         p.jab = 0;
         duel.dribbles++;
         sound('dribble');
+        if (import.meta.env?.DEV) {
+          const id = motionAudit.request(i, 'dribble');
+          motionAudit.decision(i, id, 'dribble', 'accepted');
+          motionAudit.executed(i, id, 'dribble', { evidence: 'held-movement-classified' });
+        }
       }
     } else cancelHeldMovement(p);
     const anchored = duel.owner === i && duel.ballState === 'held' && p.handling === 'hold';
@@ -1437,6 +1450,12 @@ export function tickDuel(delta: number) {
     p.prevR = input.r;
     p.prevInbound = Boolean(input.inbound);
     p.prevX = input.x;
+    if (import.meta.env?.DEV) {
+      if (p.charge > 0)
+        motionAudit.confirm(i, 'shoot_charge', { evidence: 'charge-increased', charge: p.charge });
+      if (p.mode === 'contest')
+        motionAudit.confirm(i, 'contest', { evidence: 'contest-mode', mode: p.mode });
+    }
   });
   const request = useGameStore.getState().inboundPassRequest;
   if (!freeMovement() && request && request.id !== duel.lastInboundRequestId) {
@@ -1450,6 +1469,11 @@ export function tickDuel(delta: number) {
       const receiver = duel.players[request.receiver];
       if (receiver.mode !== 'down' && receiver.mode !== 'stun' && receiver.mode !== 'dunk') {
         receiver.mode = receiver.mode === 'post' ? 'idle' : 'post';
+        if (import.meta.env?.DEV)
+          motionAudit.resolveInbound(request.id, true, undefined, {
+            evidence: 'inbound-positioning',
+            mode: receiver.mode,
+          });
         sound('post');
         say(
           receiver.mode === 'post'
@@ -1457,10 +1481,22 @@ export function tickDuel(delta: number) {
             : 'Get open. Keep moving.',
           request.receiver,
         );
-      }
+      } else if (import.meta.env?.DEV)
+        motionAudit.resolveInbound(request.id, false, `mode-${receiver.mode}`);
     } else {
       duel.players[request.receiver].passRequestAt = duel.time;
       const launched = inboundPassController.launch(request.receiver);
+      if (import.meta.env?.DEV)
+        motionAudit.resolveInbound(
+          request.id,
+          launched,
+          launched
+            ? undefined
+            : duel.inboundStage === 'position'
+              ? 'positioning-not-complete'
+              : 'launch-not-available',
+          { evidence: 'inbound-launch', launched },
+        );
       if (import.meta.env?.DEV)
         motionRecorder.event(
           'inbound.launch',

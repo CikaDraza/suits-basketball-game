@@ -13,6 +13,14 @@ export const MODEL_PATHS: Readonly<Record<Legend, string>> = {
   chuck: 'models/charles_barkley.glb',
 };
 
+/** Additional clips, loaded on demand and applied to the existing character rig. */
+export const ANIMATION_PATHS = {
+  shaq: {
+    defense: 'models/animations/shaq_defense_sequence_clean.glb',
+  },
+  chuck: {},
+} as const;
+
 /** Historical inputs; gameplay loads only MODEL_PATHS. */
 export const MODEL_ARCHIVES = {
   shaqOriginal: 'models/archives/shaquille_oneal.org.glb',

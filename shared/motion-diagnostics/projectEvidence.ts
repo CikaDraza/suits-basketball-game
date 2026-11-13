@@ -51,6 +51,8 @@ export const EVIDENCE_STATES = new Set([
   'callForPass',
 ]);
 export const EVIDENCE_ACTIONS = new Set([
+  'jab',
+  'dribble',
   'move',
   'stance',
   'stance_or_special',

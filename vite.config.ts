@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import pkg from './package.json';
+import { ANIMATION_PATHS } from './src/game/assets/manifest';
 
 function diagnosticBuild() {
   const git = (...args: string[]) => {
@@ -54,6 +55,7 @@ function diagnosticBuild() {
         'src/game/data/level-1.json',
         'public/models/shaquille_oneal.glb',
         'public/models/charles_barkley.glb',
+        `public/${ANIMATION_PATHS.shaq.defense}`,
       ].map((path) => [path, digest(path)]),
     ),
   };

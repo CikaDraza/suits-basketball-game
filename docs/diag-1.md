@@ -6,7 +6,7 @@ Branch: `feat/diag-1-motion-recorder`, based on TRAIN-1 (`d56ea7f`).
 
 1. Start the development app (`npm run dev`) and open `/game/`.
 2. Enter Training → Free Movement, or use Duel for ball actions.
-3. Open **RS debug → AUDIT**, then **RECORD**.
+3. Open **Gameplay Debug → GAMEPLAY**, then **RECORD**.
 4. Use normal keyboard, touch or gamepad controls. The recorder continues when the
    widget is closed and across pause/resume or session/character changes.
 5. **STOP → EXPORT JSON** downloads the pinned capture. **RECENT 30s JSON** exports
@@ -61,7 +61,7 @@ not implemented.
   evidence.
 - `src/components/touch-overlay/{useInputBridge,useKeyboardInput,useActionButton}.ts`,
   `TouchOverlay.tsx`, `types.ts`: source/control identity and binding-change evidence.
-- `src/game/harness/{RightStickDebugOverlay,MotionAuditPanel}.tsx`,
+- `src/game/harness/{GameplayDebugOverlay,MotionAuditPanel}.tsx`,
   `right-stick-debug.css`: existing widget expansion, local download, timeline, and
   touch-safe bounds.
 - `src/game/harness/{exposeTestSeam,useDuelTestSeam}.ts`: development diagnostics
@@ -71,6 +71,10 @@ not implemented.
   storage, observer/rule and real-gameplay/export coverage.
 
 ## Architecture and follow-up
+
+[Phase 5 — Gameplay Debug](gameplay-debug.md) extends this recorder with separate
+request/decision/execution/pose evidence, command history for both players and
+live imported walk/defense clip details. RS vectors remain under RS DETAILS.
 
 [Shared development architecture](motion-development-architecture.md) covers
 Diagnostics, all Training contracts, the future Animation Ownership Contract,

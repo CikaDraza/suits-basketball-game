@@ -140,6 +140,30 @@
   color: #aebdca;
   cursor: pointer;
 }
+.gameplay-commands {
+  list-style: none;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+}
+.gameplay-commands > li {
+  border-bottom: 1px solid #394957;
+  padding: 7px 0;
+}
+.gameplay-commands summary {
+  cursor: pointer;
+  color: #e9f0f5;
+  overflow-wrap: anywhere;
+}
+.gameplay-commands dl {
+  margin: 8px 0;
+}
+.gameplay-commands pre {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: inherit;
+}
 
 /* Keep the existing touch controls reachable while auditing live play. */
 .right-stick-debug-panel {

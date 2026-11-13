@@ -2,7 +2,7 @@ import type { Bone } from 'three';
 import type { RapierRigidBody } from '@react-three/rapier';
 import type { World } from '@dimforge/rapier3d-compat';
 import { config, level } from '../data/gameConfig';
-import { MODEL_PATHS } from '../assets/manifest';
+import { ANIMATION_PATHS, MODEL_PATHS } from '../assets/manifest';
 import type { GameSession } from '../state/gameStore';
 import type { ControlProfile } from '../input/controlBindings';
 import type { DuelState } from '../simulation/runtime';
@@ -17,6 +17,7 @@ import {
   type MotionWarning,
 } from './rules';
 import { motionRecorder as recorder } from './recorder';
+import { gameplayCommands, matchesGameplayPose } from './gameplayCommands';
 
 type Bodies = { players: (RapierRigidBody | null)[]; ball: RapierRigidBody | null };
 type Decision = { commandId: number; action: string; stage: string; reason?: string };
@@ -34,7 +35,8 @@ const physicalKeys = ['', ''];
 const warningKeys = ['', ''];
 const latestInputIds = [0, 0];
 const handCommands: (Decision | null)[] = [null, null];
-const movementCommands: (number | null)[] = [null, null];
+const movementCommands: ({ id: number; x: number; z: number } | null)[] = [null, null];
+const inboundCommands = new Map<number, { id: number; slot: number }>();
 let lastContactKey = '';
 const live = {
   inputs: [null, null] as (unknown | null)[],
@@ -42,6 +44,7 @@ const live = {
   animation: [null, null] as (AnimationObservation | null)[],
   physics: null as unknown,
   warnings: [[], []] as MotionWarning[][],
+  physicalInput: [null, null] as ({ source: string; data: unknown } | null)[],
 };
 export interface AnimationObservation {
   mode: string;
@@ -126,6 +129,16 @@ export const motionAudit = {
   request,
   decision,
   executed,
+  confirm(slot: number, action: string, data: unknown) {
+    const command = gameplayCommands.latest(slot, action);
+    if (command?.decision?.stage === 'accepted' && !command.execution)
+      executed(slot, command.id, action, data);
+  },
+  end(slot: number, action: string) {
+    const command = gameplayCommands.latest(slot, action);
+    if (command && !command.ended)
+      recorder.event('command.ended', {}, { slot, commandId: command.id, action });
+  },
   begin(state: DuelState, session: GameSession, profile: ControlProfile, bodies: Bodies) {
     runtime = state;
     executedCommands.clear();
@@ -140,9 +153,12 @@ export const motionAudit = {
     lastDecision.fill(null);
     handCommands.fill(null);
     movementCommands.fill(null);
+    inboundCommands.clear();
     live.inputs.fill(null);
     live.gamepads.fill(null);
     live.animation.fill(null);
+    live.physics = null;
+    live.physicalInput.fill(null);
     live.warnings = [[], []];
     runtimeKeys.clear();
     lastContactKey = '';
@@ -164,6 +180,7 @@ export const motionAudit = {
         session,
         legends: state.players.map((p) => p.legend),
         models: MODEL_PATHS,
+        animations: ANIMATION_PATHS,
         config,
         level,
         controls: profile,
@@ -184,6 +201,7 @@ export const motionAudit = {
   },
   input(source: string, data: unknown, slot = 0) {
     latestInputIds[slot] = recorder.event(`input.${source}`, data, { slot });
+    if (source === 'keyboard' || source === 'bridge') live.physicalInput[slot] = { source, data };
   },
   physicalPad(slot: number, pad: Gamepad | null, mapped: unknown, gate: string | null) {
     const data = {
@@ -238,7 +256,7 @@ export const motionAudit = {
       const p = runtime!.players[slot];
       if (Math.hypot(input.x, input.z) > config.player.minMove && movementCommands[slot] === null) {
         const id = request(slot, 'move');
-        movementCommands[slot] = id;
+        movementCommands[slot] = { id, x: p.x, z: p.z };
         const reason = ['down', 'stun', 'dunk'].includes(p.mode)
           ? `mode-${p.mode}`
           : runtime!.owner === slot && p.handling === 'hold'
@@ -252,7 +270,7 @@ export const motionAudit = {
         recorder.event(
           'command.ended',
           {},
-          { slot, action: 'move', commandId: movementCommands[slot]! },
+          { slot, action: 'move', commandId: movementCommands[slot]!.id },
         );
         movementCommands[slot] = null;
       }
@@ -285,6 +303,21 @@ export const motionAudit = {
   handCommand(slot: number) {
     return handCommands[slot];
   },
+  queueInbound(requestId: number, id: number, slot: number) {
+    for (const previous of inboundCommands.values())
+      decision(previous.slot, previous.id, 'inbound', 'cancelled', 'superseded-inbound-request');
+    inboundCommands.clear();
+    inboundCommands.set(requestId, { id, slot });
+    // At most one request is consumed per tick; keep cancelled/replaced IDs bounded.
+    if (inboundCommands.size > 32) inboundCommands.delete(inboundCommands.keys().next().value!);
+  },
+  resolveInbound(requestId: number, success: boolean, reason?: string, data: unknown = {}) {
+    const command = inboundCommands.get(requestId);
+    if (!command) return;
+    decision(command.slot, command.id, 'inbound', success ? 'accepted' : 'rejected', reason);
+    if (success) executed(command.slot, command.id, 'inbound', data);
+    inboundCommands.delete(requestId);
+  },
   runtime(state: DuelState) {
     state.players.forEach((p, slot) => {
       changed(
@@ -309,6 +342,16 @@ export const motionAudit = {
     const pairs: { slot: number; other: string; collider: number }[] = [];
     bodies.players.forEach((body, slot) => {
       if (!body || body.numColliders() === 0) return;
+      const movement = movementCommands[slot];
+      if (movement && !executedCommands.has(movement.id)) {
+        const position = body.translation();
+        const distance = Math.hypot(position.x - movement.x, position.z - movement.z);
+        // Diagnostic evidence threshold (1 cm), independent of commanded velocity.
+        if (state.players[slot].moving > config.player.minMove && distance > 0.01) {
+          decision(slot, movement.id, 'move', 'accepted');
+          executed(slot, movement.id, 'move', { evidence: 'measured-body-travel', distance });
+        }
+      }
       world.contactPairsWith(body.collider(0), (other) => {
         let touching = false;
         world.contactPair(body.collider(0), other, (manifold) => {
@@ -350,23 +393,35 @@ export const motionAudit = {
       observation.defense,
       observation.layers,
       observation.locomotion?.locomotion,
+      observation.locomotion?.posture,
+      observation.locomotion?.upper,
+      observation.locomotion?.importedDefense?.phase,
     ]);
     live.animation[slot] = observation;
     if (key !== poseKeys[slot]) {
       const previous = poseKeys[slot];
       poseKeys[slot] = key;
       if (previous) recorder.event('animation.ended', { previous: JSON.parse(previous) }, { slot });
-      const command = handCommands[slot];
-      recorder.event('animation.active', observation, {
-        slot,
-        commandId:
-          command && `defense_${observation.defense}` === command.action
-            ? command.commandId
-            : undefined,
-      });
-      if (command && `defense_${observation.defense}` === command.action)
-        executed(slot, command.commandId, command.action, { layer: observation.layers.arms });
+      recorder.event('animation.active', observation, { slot });
     }
+    const command = handCommands[slot];
+    if (
+      command &&
+      arms.active &&
+      observation.layers.arms === 'defensive-arm-ik' &&
+      `defense_${observation.defense}` === command.action
+    )
+      executed(slot, command.commandId, command.action, {
+        evidence: 'final-defensive-arm-ik',
+        layer: observation.layers.arms,
+      });
+    if (runtime)
+      for (const pending of gameplayCommands.pending(slot))
+        if (
+          runtime.time - pending.execution!.simulationTime < 3 &&
+          matchesGameplayPose(pending, observation, runtime)
+        )
+          recorder.event('animation.active', observation, { slot, commandId: pending.id });
     if (!runtime || runtime.time - lastPoseSample[slot] < 1 / recorder.limits.sampleHz - 1e-6)
       return;
     lastPoseSample[slot] = runtime.time;
@@ -425,6 +480,8 @@ export const motionAudit = {
       gamepad: live.gamepads[slot],
       animation: live.animation[slot],
       warnings: live.warnings[slot],
+      commands: gameplayCommands.view(slot),
+      physicalInput: live.physicalInput[slot],
     };
   },
 };

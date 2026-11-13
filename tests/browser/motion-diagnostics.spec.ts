@@ -75,9 +75,9 @@ test('manual record/export correlates physical RS, gameplay acceptance and actua
   await installPad(page);
   await bootTraining(page);
   await neutral(page);
-  await page.getByRole('button', { name: /RS debug/ }).click();
+  await page.getByRole('button', { name: /Gameplay Debug/ }).click();
   await page.getByRole('button', { name: '● RECORD', exact: true }).click();
-  await page.getByRole('button', { name: /RS debug/ }).click();
+  await page.getByRole('button', { name: /Gameplay Debug/ }).click();
   await reach(page);
   await expect
     .poll(async () =>
@@ -147,10 +147,10 @@ test('manual record/export correlates physical RS, gameplay acceptance and actua
     true,
   );
   expect(metadata.initialSeed).toBe(42);
-  await page.getByRole('button', { name: /RS debug/ }).click();
+  await page.getByRole('button', { name: /Gameplay Debug/ }).click();
   await expect(page.getByTestId('motion-active-pose')).toContainText('left');
   await expect(page.getByTestId('motion-intent')).toHaveText('defense_left');
-  await expect(page.getByTestId('motion-decision')).toHaveText('executed');
+  await expect(page.getByTestId('motion-decision')).toHaveText('accepted');
   await page.screenshot({ path: info.outputPath('motion-audit.png') });
   await page.getByRole('heading', { name: 'BODY', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath('body-ball-audit.png') });
@@ -184,7 +184,7 @@ test('keyboard/touch button audit reports actual actions and rejections; pause a
 }, info) => {
   test.setTimeout(90_000);
   await bootTraining(page);
-  await page.getByRole('button', { name: /RS debug/ }).click();
+  await page.getByRole('button', { name: /Gameplay Debug/ }).click();
   await page.getByRole('button', { name: '● RECORD', exact: true }).click();
   // Pointer activation of the widget must not steal keyboard gameplay focus.
   await page.keyboard.press('q');
@@ -233,7 +233,7 @@ test('keyboard/touch button audit reports actual actions and rejections; pause a
       ),
     )
     .toBe(true);
-  await page.getByRole('button', { name: /RS debug/ }).click();
+  await page.getByRole('button', { name: /Gameplay Debug/ }).click();
   await page.locator('.matchup section').first().getByRole('button', { name: /CHUCK/ }).click();
   await page.getByRole('button', { name: /BACK TO BUSINESS/ }).click();
   await page.waitForTimeout(200);
@@ -247,7 +247,7 @@ test('keyboard/touch button audit reports actual actions and rejections; pause a
     }
   }
   expect(result.events.some((e) => e.type === 'input.flush')).toBe(true);
-  await page.getByRole('button', { name: /RS debug/ }).click();
+  await page.getByRole('button', { name: /Gameplay Debug/ }).click();
   await page.getByRole('button', { name: 'STOP', exact: true }).click();
   await mkdir('playtest/diag-1', { recursive: true });
   await writeFile(
@@ -329,6 +329,6 @@ test('production omits the recorder and diagnostic widget while Training works n
   await bootTraining(page);
   expect(await page.evaluate(() => window.__TEST__!.mode)).toBe('prod');
   expect(await page.evaluate(() => window.__TEST__!.diagnostics)).toBeUndefined();
-  await expect(page.getByRole('button', { name: /RS debug/ })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'SUITS MOTION DIAGNOSTICS' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Gameplay Debug/ })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'SUITS GAMEPLAY DEBUG' })).toHaveCount(0);
 });
