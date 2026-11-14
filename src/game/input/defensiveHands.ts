@@ -1,3 +1,4 @@
+import type { GestureObserver } from '../diagnostics/gestureAudit';
 import {
   createSkillGesture,
   resolveSkillDirection,
@@ -38,7 +39,7 @@ export function readDefensiveHands(
         : 'right';
 }
 
-export function createDefensiveHandInput(doubleWindow: number) {
+export function createDefensiveHandInput(doubleWindow: number, observe?: GestureObserver) {
   const gesture = createSkillGesture(0);
   let identity = '',
     lastKind = '',
@@ -63,6 +64,7 @@ export function createDefensiveHandInput(doubleWindow: number) {
     pending = null;
   };
   return {
+    reset: clear,
     debug,
     sample(sample: {
       device: string | null;
@@ -114,6 +116,9 @@ export function createDefensiveHandInput(doubleWindow: number) {
               : event.hand === 1
                 ? 'left'
                 : 'right';
+        const action = `defense_${double && event.kind === 'behind' ? 'push' : debug.locked}`;
+        observe?.({ stage: 'requested', gesture: event, action });
+        observe?.({ stage: 'accepted', gesture: event, action });
         debug.facing = event.facing;
         debug.cameraAngle = sample.cameraAngle;
         debug.last = event;

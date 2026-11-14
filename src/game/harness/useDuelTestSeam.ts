@@ -1,9 +1,11 @@
+import { motionRecorder } from '../diagnostics/recorder';
+import { motionAudit } from '../diagnostics/motionAudit';
 import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Vector3 } from 'three';
 import { config, level } from '../data/gameConfig';
 import { duel, bodies, resetDuel, skillInputs } from '../entities/Duel';
-import { useGameStore } from '../state/gameStore';
+import { isFreeMovement, useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
 import { useHarnessStore } from '../state/harnessStore';
 import { extendTestSeam } from './exposeTestSeam';
@@ -26,6 +28,17 @@ export function useDuelTestSeam(): void {
     const renderedBall = new Vector3();
     const seam = extendTestSeam({
       ready: true,
+      ...(import.meta.env.DEV
+        ? {
+            diagnostics: {
+              start: () => motionRecorder.start(),
+              stop: () => motionRecorder.stop(),
+              export: (recentOnly = false) => motionRecorder.export(recentOnly),
+              status: () => motionRecorder.status(),
+            },
+            getGameplayDebug: (slot: 0 | 1) => structuredClone(motionAudit.view(slot)),
+          }
+        : {}),
       getRightStickDebug: (slot) => structuredClone(rightStickDebug[slot]),
       getLocomotion: (slot) => structuredClone(locomotionDebug[slot]),
       getHandContacts: (slot) =>
@@ -64,6 +77,11 @@ export function useDuelTestSeam(): void {
           mass: bodies.players[1]?.mass(),
           linvel: bodies.players[1]?.linvel(),
         },
+        activeBodies: {
+          players: bodies.players.map((body) => body !== null),
+          ball: bodies.ball !== null,
+        },
+        renderedCharacters: [0, 1].filter((slot) => !!scene.getObjectByName(`character-${slot}`)),
         ball: {
           ...duel.ball,
           state: duel.ballState,
@@ -106,8 +124,12 @@ export function useDuelTestSeam(): void {
       }),
       getEntities: () => [
         { id: 'player', type: 'player', position: bodies.players[0]?.translation() },
-        { id: 'opponent', type: 'opponent', position: bodies.players[1]?.translation() },
-        { id: 'ball', type: duel.ballState, position: bodies.ball?.translation() },
+        ...(!isFreeMovement(useGameStore.getState().session)
+          ? [
+              { id: 'opponent', type: 'opponent', position: bodies.players[1]?.translation() },
+              { id: 'ball', type: duel.ballState, position: bodies.ball?.translation() },
+            ]
+          : []),
         { id: 'hoop', type: 'static', position: level.hoop },
         { id: 'court', type: 'static', active: true },
       ],

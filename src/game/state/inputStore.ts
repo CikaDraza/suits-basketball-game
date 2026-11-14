@@ -1,3 +1,4 @@
+import { motionRecorder } from '../diagnostics/recorder';
 import { create } from 'zustand';
 import { clamp } from '../utils/math';
 import { config } from '../data/gameConfig';
@@ -53,6 +54,7 @@ export const useInputStore = create<InputStore>((set) => ({
     const moveZ = normalizeAxis(z);
     set((state) => {
       if (state.moveX === moveX && state.moveZ === moveZ) return state;
+      if (import.meta.env?.DEV) motionRecorder.event('input.axis-store', { x: moveX, z: moveZ });
       movement.update(moveX, moveZ, performance.now() / 1000);
       return { moveX, moveZ };
     });
@@ -60,11 +62,14 @@ export const useInputStore = create<InputStore>((set) => ({
   setAction: (action, active) => {
     set((state) => {
       if (state[action] === active) return state;
+      if (import.meta.env?.DEV) motionRecorder.event('input.button-edge', { action, active });
       if (buttonEdges.length < 128) buttonEdges.push({ action, active });
       return { [action]: active };
     });
   },
   flush: () => {
+    if (import.meta.env?.DEV)
+      motionRecorder.event('input.flush', { version: inputResetVersion + 1 });
     inputResetVersion++;
     movement.cancel();
     buttonEdges.length = 0;

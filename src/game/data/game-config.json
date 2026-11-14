@@ -61,6 +61,10 @@
     "catchReadyDistance": 1.8,
     "contactSideDeadzone": 0.16,
     "contactReach": 0.55,
+    "importedDefense": {
+      "blendDuration": 0.3,
+      "lowerBlendRate": 12
+    },
     "gait": {
       "startSpeed": 0.18,
       "stopSpeed": 0.08,

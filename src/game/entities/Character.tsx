@@ -1,3 +1,4 @@
+import { motionAudit } from '../diagnostics/motionAudit';
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
@@ -14,7 +15,7 @@ import {
   type Skeleton,
 } from 'three';
 import { config, type Legend } from '../data/gameConfig';
-import { MODEL_PATHS } from '../assets/manifest';
+import { ANIMATION_PATHS, MODEL_PATHS } from '../assets/manifest';
 import { clamp, dampingFactor } from '../utils/math';
 import { isSimulationRunning } from '../simulation/isSimulationRunning';
 import { useHarnessStore } from '../state/harnessStore';
@@ -35,6 +36,7 @@ import { createGaitState, stepGait, type GaitTuning } from './gait';
 import { deriveStates, type CallForPassFallback } from './posture';
 import { locomotionDebug } from './locomotionDebug';
 import { createImportedWalk, isolateWalkingCharacter } from './importedWalk';
+import { createImportedDefense } from './importedDefense';
 
 Object.values(MODEL_PATHS).forEach((path) => useGLTF.preload(path));
 
@@ -228,8 +230,10 @@ export function Character({ index, legend }: CharacterProps) {
   const inspection = useHarnessStore((state) => state.inspectionView);
   const hasImportedWalk = legend === 'shaq';
   const modelPath = MODEL_PATHS[legend];
-  const gltf = useGLTF(modelPath);
-  const { model, rig, face, skeletons, groundFeet, legRig, hands, defenseArms, walk } =
+  const [gltf, defenseAsset] = useGLTF(
+    hasImportedWalk ? [modelPath, ANIMATION_PATHS.shaq.defense] : [modelPath],
+  );
+  const { model, rig, face, skeletons, groundFeet, legRig, hands, defenseArms, walk, defense } =
     useMemo(() => {
       const model = cloneSkinned(gltf.scene);
       if (hasImportedWalk) isolateWalkingCharacter(model);
@@ -247,6 +251,9 @@ export function Character({ index, legend }: CharacterProps) {
         face: createFaceController(model),
         skeletons,
         walk: hasImportedWalk ? createImportedWalk(model, gltf.animations) : null,
+        defense: defenseAsset
+          ? createImportedDefense(model, defenseAsset.scene, defenseAsset.animations)
+          : null,
         // measured in the detached bind pose, before any posing
         legRig: createLegRig(model, rig.bones),
         hands,
@@ -259,7 +266,7 @@ export function Character({ index, legend }: CharacterProps) {
           { skinnedContacts: hasImportedWalk },
         ),
       };
-    }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath]);
+    }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath, defenseAsset]);
   const shadowTexture = useMemo(createShadowTexture, []);
   useEffect(() => () => shadowTexture.dispose(), [shadowTexture]);
   useEffect(
@@ -340,7 +347,7 @@ export function Character({ index, legend }: CharacterProps) {
       s = config.shots;
     const body = bodies.players[index];
     const owner = duel.owner === index;
-    const opponent = duel.players[1 - index];
+    const opponent = bodies.players[1 - index] ? duel.players[1 - index] : null;
     const exhausted = p.energy < config.player.exhaustedThreshold;
     const rimDx = hoop.rimWorld.x - p.x,
       rimDz = hoop.rimWorld.z - p.z;
@@ -363,7 +370,7 @@ export function Character({ index, legend }: CharacterProps) {
     const velocity = { x: st.velX, z: st.velZ };
     const measuredSpeed = Math.hypot(velocity.x, velocity.z);
     if (awaitingPass && measuredSpeed > config.animation.callForPass.cutSpeed) st.lastCut = t;
-    const opponentDistance = Math.hypot(opponent.x - p.x, opponent.z - p.z);
+    const opponentDistance = opponent ? Math.hypot(opponent.x - p.x, opponent.z - p.z) : Infinity;
     const states = deriveStates({
       mode: p.mode,
       controlled,
@@ -493,6 +500,21 @@ export function Character({ index, legend }: CharacterProps) {
     const mv = st.moveWeight * clamp(gait.speed / config.player[legend].speed, 0, 1);
     const along = gait.speed > 1e-3 ? gait.forwardSpeed / gait.speed : 0; // +1 fwd, −1 back
 
+    defense?.step(
+      frameDt,
+      p.mode === 'post' && !controlled,
+      grounded &&
+        !controlled &&
+        !receiving &&
+        !awaitingPass &&
+        (p.mode === 'idle' || p.mode === 'post') &&
+        p.charge === 0 &&
+        p.jab === 0 &&
+        p.bite === 0,
+      gait.moving,
+      reset,
+    );
+    defense?.resetPose();
     walk?.step(
       frameDt,
       travelX * fx + travelZ * fz,
@@ -528,8 +550,8 @@ export function Character({ index, legend }: CharacterProps) {
       Math.sin(t * (exhausted ? 7 : 3)) * (exhausted ? 0.04 : 0.012);
 
     // look at the ball (head yaw in local frame); chest follows within anatomical limits
-    const bx = duel.ball.x - p.x,
-      bz = duel.ball.z - p.z;
+    const bx = duel.ballState === 'inactive' ? 0 : duel.ball.x - p.x,
+      bz = duel.ballState === 'inactive' ? 0 : duel.ball.z - p.z;
     const ballLocalX = bx * Math.cos(p.angle) - bz * Math.sin(p.angle),
       ballLocalZ = bx * Math.sin(p.angle) + bz * Math.cos(p.angle);
     const look = Math.atan2(ballLocalX, Math.max(0.2, ballLocalZ));
@@ -537,7 +559,9 @@ export function Character({ index, legend }: CharacterProps) {
     const ballSide = ballLocalX >= 0 ? 1 : -1; // +1 = ball on the character's left
     target.headYaw = clamp(look * 0.55, -0.7, 0.7);
     target.headPitch = clamp(
-      (-(duel.ball.y - rig.headY) / Math.max(1, Math.hypot(bx, bz))) * 0.4,
+      (-(duel.ballState === 'inactive' ? 0 : duel.ball.y - rig.headY) /
+        Math.max(1, Math.hypot(bx, bz))) *
+        0.4,
       -0.45,
       0.35,
     );
@@ -662,7 +686,7 @@ export function Character({ index, legend }: CharacterProps) {
           target.lPitch = target.rPitch = -0.45;
           target.lElbow = target.rElbow = 1.6;
         }
-        if (awaitingPass) {
+        if (awaitingPass && opponent) {
           const gx = opponent.x - p.x,
             gz = opponent.z - p.z;
           const localX = gx * Math.cos(p.angle) - gz * Math.sin(p.angle);
@@ -772,7 +796,7 @@ export function Character({ index, legend }: CharacterProps) {
     // posture lean: low defensive stance; bracing leans into the blocker
     target.lean +=
       0.18 * st.wDefensive * (states.upper === 'guard' || states.upper === 'deny' ? 0 : 1);
-    if (st.brace > 0.01) {
+    if (st.brace > 0.01 && opponent) {
       const behind = (opponent.x - p.x) * fx + (opponent.z - p.z) * fz < 0;
       target.lean += (behind ? -1 : 1) * PO.braceLean * st.brace;
     }
@@ -923,6 +947,13 @@ export function Character({ index, legend }: CharacterProps) {
       // The capsule remains authoritative. Hand IK below sees the final grounded torso.
       groundFeet?.(groundPoint.y);
     }
+    if (defense && defense.debug.phase !== 'inactive') {
+      defense.apply();
+      model.updateWorldMatrix(true, true);
+      // Ground the blended FK pose without applying root motion to physics.
+      // During movement the lower layer fades back to the existing foot IK.
+      if (defense.debug.appliedLower > 0) groundFeet?.(groundPoint.y);
+    }
     locomotionDebug[index] = {
       locomotion: gait.locomotion,
       posture: states.posture,
@@ -940,6 +971,7 @@ export function Character({ index, legend }: CharacterProps) {
       stride,
       grounded: grounded && st.groundReady,
       ...(walk ? { importedWalk: { ...walk.debug } } : {}),
+      ...(defense ? { importedDefense: { ...defense.debug } } : {}),
       feet: gait.feet.map((f, i) => ({
         planted: !f.swinging,
         target: { x: f.target.x, y: f.target.y, z: f.target.z },
@@ -976,7 +1008,12 @@ export function Character({ index, legend }: CharacterProps) {
         1 -
           smoothUnit((ballPoint.distanceTo(catchPoint) - config.inbound.passing.catchRadius) / 0.4),
       );
-    if (defensiveArmsEnabled && (defensiveHands !== 'none' || defenseArms.active)) hands.release();
+    const importedDefenseActive = defense != null && defense.debug.phase !== 'inactive';
+    if (
+      (defensiveArmsEnabled && (defensiveHands !== 'none' || defenseArms.active)) ||
+      importedDefenseActive
+    )
+      hands.release();
     hands.update(
       incoming ? incomingPoint : ballPoint,
       controlled,
@@ -993,7 +1030,8 @@ export function Character({ index, legend }: CharacterProps) {
       p.angle,
       opponent,
       Math.min(rawDt, 0.25),
-      defensiveArmsEnabled,
+      defensiveArmsEnabled &&
+        !(importedDefenseActive && (defensiveHands === 'none' || defensiveHands === 'ready')),
       pushAge / config.defense.hands.pushDuration,
       t,
     );
@@ -1039,6 +1077,45 @@ export function Character({ index, legend }: CharacterProps) {
     st.face.gazeX = st.gx;
     st.face.gazeY = st.gy;
     face(st.face);
+    if (import.meta.env.DEV)
+      motionAudit.pose(
+        index,
+        {
+          mode: p.mode,
+          phase: {
+            remaining: p.timer,
+            push: pushAge / config.defense.hands.pushDuration,
+            ball: duel.ballControl.phase,
+          },
+          defense: defensiveArmsEnabled ? defensiveHands : 'none',
+          locomotion: locomotionDebug[index],
+          layers: {
+            base: 'procedural-fk',
+            legs:
+              defense && defense.debug.appliedLower > 0
+                ? `imported-defense:${defense.debug.clip}`
+                : walk && walk.debug.weight > 0
+                  ? `imported-walk:${walk.debug.clip}`
+                  : 'procedural-gait',
+            feet: 'foot-grounding',
+            torso: importedDefenseActive
+              ? `imported-defense:${defense.debug.clip}`
+              : 'procedural-posture',
+            arms:
+              defensiveArmsEnabled && defenseArms.active
+                ? 'defensive-arm-ik'
+                : controlled || incoming
+                  ? 'ball-hand-ik'
+                  : importedDefenseActive
+                    ? `imported-defense:${defense.debug.clip}`
+                    : 'procedural-fk',
+            head: importedDefenseActive ? 'imported-defense' : 'procedural-look',
+          },
+        },
+        rig.bones,
+        defenseArms,
+        hands,
+      );
   }, -50);
 
   return (

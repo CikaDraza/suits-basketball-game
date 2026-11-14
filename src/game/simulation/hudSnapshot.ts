@@ -89,7 +89,7 @@ export function createHudSnapshot(
     ballState: runtime.ballState,
     charge: first.charge,
     message: runtime.time < runtime.messageUntil ? runtime.message : '',
-    cpu: !runtime.p2Human,
+    cpu: runtime.ballState !== 'inactive' && !runtime.p2Human,
     phase: runtime.ballState === 'inbound' ? 'INBOUND_PHASE' : 'LIVE',
     inbound,
     handling: reusePair(previous.handling, handling(0), handling(1)),

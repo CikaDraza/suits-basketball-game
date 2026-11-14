@@ -7,16 +7,22 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json",
-    "lint": "eslint src tests *.config.*",
-    "format": "prettier --write src tests *.config.* package.json tsconfig*.json README.md docs",
-    "format:check": "prettier --check src tests *.config.* package.json tsconfig*.json README.md docs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json && npm run build -w @suits/motion-contracts && npm run typecheck -w @suits/analysis-api && tsc --noEmit -p tsconfig.api.json",
+    "lint": "eslint api src tests server/src server/tests shared/motion-diagnostics/*.ts *.config.*",
+    "format": "prettier --write api src tests server/src server/tests server/*.md server/package.json server/tsconfig*.json shared/motion-diagnostics/*.ts shared/motion-diagnostics/*.json vercel.json *.config.* package.json tsconfig*.json README.md docs",
+    "format:check": "prettier --check api src tests server/src server/tests server/*.md server/package.json server/tsconfig*.json shared/motion-diagnostics/*.ts shared/motion-diagnostics/*.json vercel.json *.config.* package.json tsconfig*.json README.md docs",
     "test": "node --import tsx --test --test-isolation=none tests/*.test.ts",
     "test:browser": "playwright test",
-    "check": "npm run typecheck && npm run lint && npm test && npm run format:check"
+    "check": "npm run typecheck && npm run lint && npm test && npm run format:check && npm run analysis:test",
+    "analysis:dev": "npm run build -w @suits/motion-contracts && npm run dev -w @suits/analysis-api",
+    "analysis:build": "npm run build -w @suits/motion-contracts && npm run build -w @suits/analysis-api",
+    "analysis:test": "npm run build -w @suits/motion-contracts && npm test -w @suits/analysis-api",
+    "analysis:provider-check": "npm run build -w @suits/motion-contracts && npm run provider:check -w @suits/analysis-api",
+    "analysis:prepare": "npm run build -w @suits/motion-contracts && npm run prepare:recording -w @suits/analysis-api --",
+    "analysis:compact": "npm run build -w @suits/motion-contracts && npm run compact:recording -w @suits/analysis-api --"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": "24.x"
   },
   "overrides": {
     "minimatch": "^11.0.1"
@@ -45,5 +51,9 @@
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.72.1",
     "vite": "^6.0.0"
-  }
+  },
+  "workspaces": [
+    "server",
+    "shared/motion-diagnostics"
+  ]
 }

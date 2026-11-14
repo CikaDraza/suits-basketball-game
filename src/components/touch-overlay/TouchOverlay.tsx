@@ -3,7 +3,7 @@ import { styles } from './styles';
 import type { TouchOverlayConfig } from './types';
 import { useActionButton } from './useActionButton';
 import { useJoystickInput } from './useJoystickInput';
-import { useGameStore } from '../../game/state/gameStore';
+import { isFreeMovement, useGameStore } from '../../game/state/gameStore';
 import { useControlSettingsStore } from '../../game/state/controlSettingsStore';
 import {
   TOUCH_SLOTS,
@@ -42,7 +42,7 @@ function MappedButton({
   readonly context: ControlContext;
   readonly enabled: boolean;
 }) {
-  const events = useActionButton(action ?? 'ACTION_A');
+  const events = useActionButton(action ?? 'ACTION_A', { control: slot });
   const description =
     action === 'ACTION_A'
       ? 'shoot / contest'
@@ -75,7 +75,7 @@ export function TouchOverlay({
   const [isMobile] = useState(isMobileDevice);
   const shouldShow = forceShow || isMobile;
   const context = useGameStore((s) =>
-    (s.inbound?.owner ?? s.owner) === 0 ? 'offense' : 'defense',
+    !isFreeMovement(s.session) && (s.inbound?.owner ?? s.owner) === 0 ? 'offense' : 'defense',
   );
   const bindings = useControlSettingsStore((s) => s.profile[context].mobile);
   const { baseRef, knobRef, ...joystickEvents } = useJoystickInput({

@@ -1,3 +1,4 @@
+import type { GestureObserver } from '../diagnostics/gestureAudit';
 import {
   createSkillGesture,
   SKILL_GESTURE_DEFAULTS,
@@ -13,6 +14,7 @@ interface SkillSample {
   facing: number;
   enabled: boolean;
   eligible: boolean;
+  ineligibleReason?: string;
   crossing: boolean;
   crossingKind?: DribbleSkillKind | null;
   /** Simulation clock, in seconds. */
@@ -26,6 +28,7 @@ export function createDribbleSkillBuffer(
   cameraAngle: number,
   verticalScale: number,
   doubleFlickWindow: number = SKILL_GESTURE_DEFAULTS.doubleFlickWindow,
+  observe?: GestureObserver,
 ) {
   const gesture = createSkillGesture(cameraAngle, { verticalScale });
   let device: string | null = null;
@@ -42,7 +45,8 @@ export function createDribbleSkillBuffer(
     accepted: null as HandGesture | null,
     pending: 0,
   };
-  const clear = () => {
+  const clear = (reason = 'reset') => {
+    for (const gesture of pending) observe?.({ stage: 'cancelled', gesture, reason });
     gesture.reset();
     previousHand = 0;
     ready = false;
@@ -52,6 +56,7 @@ export function createDribbleSkillBuffer(
     debug.accepted = null;
   };
   return {
+    reset: clear,
     debug,
     get armed() {
       return gesture.armed;
@@ -61,14 +66,14 @@ export function createDribbleSkillBuffer(
     },
     sample(sample: SkillSample) {
       if (sample.device !== device || sample.version !== version) {
-        clear();
+        clear('device-or-input-reset');
         device = sample.device;
         version = sample.version;
         debug.activations = debug.rejected = 0;
         debug.last = null;
       }
       if (!sample.enabled || !sample.device) {
-        clear();
+        clear('input-disabled');
         return;
       }
       if (
@@ -99,6 +104,14 @@ export function createDribbleSkillBuffer(
       if (!sample.eligible || sample.crossing) {
         if (!sample.eligible || !isRearUpgrade(pending[0])) {
           if (pending.length && sample.crossing) debug.rejected++;
+          for (const gesture of pending)
+            observe?.({
+              stage: 'cancelled',
+              gesture,
+              reason: sample.crossing
+                ? 'crossing-active'
+                : (sample.ineligibleReason ?? 'not-eligible'),
+            });
           pending.length = 0;
           debug.pending = 0;
         }
@@ -111,18 +124,28 @@ export function createDribbleSkillBuffer(
       debug.accepted = null;
       debug.activations++;
       debug.last = { ...event, sequence: debug.activations };
+      observe?.({ stage: 'requested', gesture: debug.last });
       if (sample.crossing && !isRearUpgrade(event)) {
         debug.rejected++;
+        observe?.({ stage: 'rejected', gesture: debug.last, reason: 'crossing-active' });
         return;
       }
       if (sample.eligible) {
         lastBehindAt = event.kind === 'behind' && !event.double ? time : -Infinity;
         // An active rear crossover accepts only the second quick rear flick.
+        for (const gesture of pending)
+          observe?.({ stage: 'cancelled', gesture, reason: 'superseded' });
         pending.length = 0;
         pending.push(debug.last);
+        observe?.({ stage: 'queued', gesture: debug.last });
         debug.accepted = debug.last;
         debug.pending = 1;
-      }
+      } else
+        observe?.({
+          stage: 'rejected',
+          gesture: debug.last,
+          reason: sample.ineligibleReason ?? 'not-eligible',
+        });
     },
     take() {
       const event = pending.pop() ?? null;

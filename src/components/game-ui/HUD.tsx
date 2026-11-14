@@ -1,6 +1,6 @@
 import { PORTRAIT_PATHS } from '../../game/assets/manifest';
 import { config } from '../../game/data/gameConfig';
-import { useGameStore } from '../../game/state/gameStore';
+import { isFreeMovement, useGameStore } from '../../game/state/gameStore';
 import type { PlayerSlot } from '../../game/simulation/types';
 import {
   isPerfectCharge,
@@ -29,6 +29,7 @@ function PlayerScore({ slot }: { slot: PlayerSlot }) {
 function FighterChip({ slot }: { slot: PlayerSlot }) {
   const legend = useGameStore((state) => state.legends[slot]);
   const cpu = useGameStore((state) => slot === 1 && state.cpu);
+  const movement = useGameStore((s) => isFreeMovement(s.session));
   const portrait = <img src={PORTRAIT_PATHS[legend]} alt="" />;
   return (
     <div className={`fighter-chip${slot === 1 ? ' rival' : ''}`}>
@@ -37,7 +38,7 @@ function FighterChip({ slot }: { slot: PlayerSlot }) {
         <span className="micro">
           {slot === 0 ? 'YOU' : cpu ? 'CPU' : 'P2'} · {config.player[legend].name}
         </span>
-        <PlayerScore slot={slot} />
+        {!movement && <PlayerScore slot={slot} />}
         <EnergyMeter slot={slot} />
       </div>
       {slot === 1 && portrait}
@@ -94,16 +95,17 @@ const pauseGame = () => useGameStore.getState().pause();
 
 /** Each changing HUD field owns its subscription; the layout has no store subscription. */
 export function HUD() {
+  const movement = useGameStore((s) => isFreeMovement(s.session));
   return (
     <div className="hud">
       <header className="hud-header">
         <FighterChip slot={0} />
         <div className="match-chip">
-          <span className="micro">NO FOULS</span>
-          <b>FIRST TO {config.score.winTarget}</b>
+          <span className="micro">{movement ? 'TRAINING' : 'NO FOULS'}</span>
+          <b>{movement ? 'FREE MOVEMENT' : `FIRST TO ${config.score.winTarget}`}</b>
           <span className="live-dot">● LIVE</span>
         </div>
-        <FighterChip slot={1} />
+        {!movement && <FighterChip slot={1} />}
       </header>
       <div className="court-heading">
         <span>THE LAST DANCE</span>
@@ -118,13 +120,13 @@ export function HUD() {
       </button>
       <div className="bottom-info">
         <HandlingLabel />
-        <ShotFeedback />
+        {movement ? <p>MOVE · STANCE · DEFENSIVE HANDS</p> : <ShotFeedback />}
       </div>
       <InboundPrompt />
       <div className="control-legend">
         <span>MOVE</span>
-        <span>△ POST / SPIN</span>
-        <span>□ SHOOT / CONTEST</span>
+        <span>{movement ? '△ STANCE' : '△ POST / SPIN'}</span>
+        <span>{movement ? '□ CONTEST · RS HANDS' : '□ SHOOT / CONTEST'}</span>
       </div>
     </div>
   );

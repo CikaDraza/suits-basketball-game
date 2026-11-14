@@ -1,3 +1,5 @@
+import { motionAudit } from '../../game/diagnostics/motionAudit';
+import { motionRecorder } from '../../game/diagnostics/recorder';
 import { useEffect } from 'react';
 import { enableAudio } from '../../game/audio/audio';
 import { useGameStore } from '../../game/state/gameStore';
@@ -46,6 +48,12 @@ export function useInputBridge() {
     };
     const onInput = (event: Event) => {
       const detail = (event as CustomEvent<GameInputEvent>).detail;
+      if (import.meta.env.DEV && detail)
+        motionAudit.input('bridge', {
+          ...detail,
+          screen: useGameStore.getState().screen,
+          gameplayBridgeEnabled: useGameStore.getState().screen === 'playing',
+        });
       if (!detail || useGameStore.getState().screen !== 'playing') return;
       const { action, phase, axis, source } = detail;
       if (phase === 'down') enableAudio();
@@ -103,7 +111,11 @@ export function useInputBridge() {
     });
 
     const unsubscribeSettings = useControlSettingsStore.subscribe((next, previous) => {
-      if (next.profile !== previous.profile) flush();
+      if (next.profile !== previous.profile) {
+        if (import.meta.env.DEV)
+          motionRecorder.event('configuration.controls', { profile: next.profile });
+        flush();
+      }
     });
     window.addEventListener(GAME_INPUT_EVENT, onInput);
     window.addEventListener('blur', flush);
