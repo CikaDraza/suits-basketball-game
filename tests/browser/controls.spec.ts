@@ -94,7 +94,7 @@ async function savedProfile(page: Page) {
 }
 
 for (const inboundButton of [0, 7]) {
-  test(`inbound button ${inboundButton} passes once while Circle/B remains a stance command`, async ({
+  test(`inbound button ${inboundButton} passes once while L1/LB remains a stance command`, async ({
     page,
   }) => {
     await mockController(page, true, [0, 0, 0, 0, -1, -1], inboundButton);
@@ -107,7 +107,7 @@ for (const inboundButton of [0, 7]) {
       window.__TEST__!.teleport('opponent', [2, 0.95, -2]);
     });
     await expect.poll(async () => (await state(page)).inbound).toMatchObject({ stage: 'pass' });
-    await page.evaluate(() => (window.__mockPad.pressed = [1]));
+    await page.evaluate(() => (window.__mockPad.pressed = [4]));
     await expect.poll(async () => (await state(page)).player).toMatchObject({ mode: 'post' });
     await advance(page, 0.2);
     expect((await state(page)).passes).toBe(0);

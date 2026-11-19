@@ -24,12 +24,15 @@ test('F and Triangle/Y are configurable jump bindings and legacy Triangle stance
   assert.equal(mapped.q, false);
   const legacy = structuredClone(profile);
   for (const context of ['offense', 'defense'] as const) {
-    delete (legacy[context].gamepad as Partial<typeof legacy.offense.gamepad>).JUMP;
+    const bindings: Partial<typeof legacy.offense.gamepad> = legacy[context].gamepad;
+    delete bindings.JUMP;
+    delete bindings.CHARGE_STANCE;
     legacy[context].gamepad.ACTION_B = { kind: 'button', index: 3 };
   }
   const restored = restoreProfile(legacy);
   assert.deepEqual(restored.defense.gamepad.JUMP, { kind: 'button', index: 3 });
-  assert.deepEqual(restored.defense.gamepad.ACTION_B, { kind: 'button', index: 1 });
+  assert.deepEqual(restored.defense.gamepad.ACTION_B, { kind: 'button', index: 4 });
+  assert.deepEqual(restored.defense.gamepad.CHARGE_STANCE, { kind: 'button', index: 1 });
   profile.defense.keyboard.JUMP = ['KeyG'];
   assert.equal(keyAction(restoreProfile(profile).defense, 'KeyG'), 'JUMP');
 });

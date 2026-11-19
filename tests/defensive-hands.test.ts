@@ -90,7 +90,7 @@ test('accepted defense locks direction, side and facing until neutral and reject
   }
 });
 
-test('two forward flicks wave, held rear braces, and two rear flicks buffer exactly one shove', () => {
+test('two forward flicks buffer exactly one shove and two rear flicks only brace', () => {
   const input = createDefensiveHandInput(config.defense.hands.doubleFlickWindow);
   const sample = (z: number, time: number, enabled = true, version = 0) =>
     input.sample({
@@ -106,15 +106,17 @@ test('two forward flicks wave, held rear braces, and two rear flicks buffer exac
   sample(0, 0);
   assert.equal(sample(-1, 0.1), 'up');
   sample(0, 0.15);
-  assert.equal(sample(-1, 0.22), 'wave');
-  assert.equal(sample(-1, 1), 'wave', 'second forward hold keeps waving');
+  assert.equal(sample(-1, 0.22), 'up');
+  assert.ok(input.takePush(0.23));
+  assert.equal(input.takePush(0.24), null);
+  assert.equal(sample(-1, 1), 'up');
   sample(0, 1.1);
   assert.equal(sample(1, 1.2), 'brace');
   assert.equal(sample(1, 1.3), 'brace');
   assert.equal(input.takePush(1.3), null, 'a held first rear never shoves');
   sample(0, 1.35);
   assert.equal(sample(1, 1.4), 'brace');
-  assert.ok(input.takePush(1.41));
+  assert.equal(input.takePush(1.41), null);
   assert.equal(input.takePush(1.42), null);
   sample(1, 1.5);
   assert.equal(input.takePush(1.5), null, 'holding cannot repeat the shove');

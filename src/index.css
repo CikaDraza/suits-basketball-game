@@ -1136,6 +1136,11 @@ h2 span {
   margin-top: 3px;
   font-size: 10px;
 }
+.training-panel .panel-actions button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: #5b402a;
+  color: #fff;
+}
 .training-mode:disabled {
   opacity: 0.5;
   cursor: default;

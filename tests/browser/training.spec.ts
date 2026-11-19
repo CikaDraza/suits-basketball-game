@@ -28,8 +28,6 @@ async function boot(page: Page) {
 async function enterTraining(page: Page) {
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await page.getByRole('button', { name: 'TRAINING', exact: true }).click();
-  await expect(page.getByRole('button', { name: /SOLO PRACTICE/ })).toBeDisabled();
-  await expect(page.getByRole('button', { name: /1v1 PRACTICE/ })).toBeDisabled();
   await page.getByRole('button', { name: /FREE MOVEMENT/ }).click();
   await page.getByRole('button', { name: /START TRAINING/ }).click();
   await expect
@@ -264,16 +262,16 @@ for (const legend of ['shaq', 'chuck'] as const) {
         }
         // Gesture sampling precedes fixed physics. Wait for the pending shove to
         // reach that step instead of treating a render callback as a physics tick.
-        if (sign === -1) {
+        if (sign === 1) {
           for (let i = 0; i < 30 && (seam.getState().player as Fighter).defensePushAt < 0; i++)
             await frame();
         }
         const p = seam.getState().player as Fighter;
-        out.push(sign === 1 ? p.defenseHands : p.defensePushAt >= 0 ? 'push' : 'missing');
+        out.push(sign === -1 ? p.defenseHands : p.defensePushAt >= 0 ? 'push' : 'missing');
       }
       return out;
     });
-    expect(doubles).toEqual(['wave', 'push']);
+    expect(doubles).toEqual(['push', 'brace']);
     await page.waitForTimeout(500);
     expect((await state(page)).defensePushes).toBe(0);
     expect(((await state(page)).opponent as Fighter).aiClock).toBe(0);
@@ -302,3 +300,165 @@ for (const legend of ['shaq', 'chuck'] as const) {
     expect(errors).toEqual([]);
   });
 }
+
+async function startPractice(page: Page, mode: 'solo' | 'offense' | 'defense') {
+  await boot(page);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.getByRole('button', { name: 'TRAINING', exact: true }).click();
+  if (mode === 'solo') await page.getByRole('button', { name: /SOLO PRACTICE/ }).click();
+  else {
+    await page.getByRole('button', { name: /1v1 PRACTICE/ }).click();
+    await page.getByRole('button', { name: mode.toUpperCase(), exact: true }).click();
+  }
+  await page.getByRole('button', { name: /START TRAINING/ }).click();
+}
+
+test('Solo mounts only the player and ball, then returns possession for the next shot', async ({
+  page,
+}) => {
+  await startPractice(page, 'solo');
+  await expect
+    .poll(() => state(page))
+    .toMatchObject({
+      session: { kind: 'training', drill: 'solo' },
+      activeBodies: { players: [true, false], ball: true },
+      owner: 0,
+      cpu: false,
+    });
+  await page.keyboard.down('d');
+  try {
+    await expect.poll(async () => (await state(page)).dribbles).toBeGreaterThan(0);
+  } finally {
+    await page.keyboard.up('d');
+  }
+  await page.keyboard.down('r');
+  try {
+    await expect
+      .poll(async () => (await player(page)).charge)
+      .toBeGreaterThan(config.shots.minHold);
+  } finally {
+    await page.keyboard.up('r');
+  }
+  await expect.poll(async () => (await state(page)).shots).toBe(1);
+  await expect
+    .poll(() => state(page))
+    .toMatchObject({ owner: 0, ballState: 'held', screen: 'playing' });
+});
+
+for (const role of ['offense', 'defense'] as const) {
+  test(`1v1 ${role}: defender recovery restarts from the sideline with the same attacker`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await startPractice(page, role);
+    const attacker = role === 'offense' ? 0 : 1;
+    await expect
+      .poll(() => state(page))
+      .toMatchObject({
+        session: { kind: 'training', drill: 'one-on-one', role },
+        inbound: { stage: 'position', owner: attacker },
+      });
+    await page.evaluate((attacker) => {
+      const seam = window.__TEST__!;
+      seam.setDebugFlag('testMode', true);
+      seam.teleport(attacker === 0 ? 'player' : 'opponent', [5, 0.95, 2]);
+      seam.teleport(attacker === 0 ? 'opponent' : 'player', [10, 0.95, -3]);
+    }, attacker);
+    await expect
+      .poll(() => state(page), { timeout: 18_000 })
+      .toMatchObject({ inbound: { stage: 'pass', owner: attacker } });
+    if (attacker === 0) await page.keyboard.press('e');
+    else await page.evaluate(() => window.__TEST__!.requestInboundPass!(1));
+    await expect.poll(() => state(page)).toMatchObject({ owner: attacker, ballState: 'held' });
+    // Place a real loose Rapier ball within reach of the defender, like a rebound.
+    await page.evaluate((attacker) => {
+      const seam = window.__TEST__!;
+      const defender = seam.getState()[attacker === 0 ? 'opponent' : 'player'] as Fighter;
+      seam.teleport('ball', [defender.x, 0.2, defender.z]);
+    }, attacker);
+    if (attacker === 1) await page.keyboard.down('r');
+    try {
+      await expect
+        .poll(() => state(page))
+        .toMatchObject({
+          owner: -1,
+          ballState: 'inbound',
+          inbound: { stage: 'position', owner: attacker },
+          ball: { x: expect.closeTo(level.inbound.x, 5), z: expect.closeTo(level.inbound.z, 5) },
+        });
+    } finally {
+      if (attacker === 1) await page.keyboard.up('r');
+    }
+  });
+}
+
+test('L1 toggles stance, Circle holds the low hand guard and a double tap falls backward once', async ({
+  page,
+}, info) => {
+  await installPad(page);
+  await boot(page);
+  await enterTraining(page);
+  const press = (button: number | null) =>
+    page.evaluate((button) => {
+      window.__trainingButtons = button === null ? [] : [button];
+    }, button);
+  await expect.poll(async () => (await player(page)).jump.grounded).toBe(true);
+  await press(4);
+  await expect.poll(async () => (await player(page)).mode).toBe('post');
+  await press(null);
+  await frames(page);
+  await press(4);
+  await expect.poll(async () => (await player(page)).mode).toBe('idle');
+  expect((await state(page)).flops).toBe(0);
+  await press(null);
+  await frames(page);
+  await page.evaluate(() => window.__TEST__!.inspectCharacter!('front'));
+  await press(1);
+  await expect.poll(async () => (await player(page)).chargeStance).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const pose = window.__TEST__!.getCharacterPose!(0)!;
+        const l = pose.joints.LeftHand,
+          r = pose.joints.RightHand;
+        return Math.hypot(l.x - r.x, l.y - r.y, l.z - r.z);
+      }),
+    )
+    .toBeLessThan(0.16);
+  await page.screenshot({ path: info.outputPath('charge-stance.png') });
+  await press(null);
+  await expect.poll(async () => (await player(page)).chargeStance).toBe(false);
+  const releasedAt = (await state(page)).time as number;
+  await expect
+    .poll(async () => (await state(page)).time)
+    .toBeGreaterThan(releasedAt + config.player.doubleTapWindow);
+  await page.evaluate(async () => {
+    const seam = window.__TEST__!;
+    const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    window.__trainingButtons = [1];
+    while (!(seam.getState().player as Fighter).chargeStance) await frame();
+    window.__trainingButtons = [];
+    while ((seam.getState().player as Fighter).chargeStance) await frame();
+    window.__trainingButtons = [1];
+  });
+  await expect
+    .poll(() => state(page))
+    .toMatchObject({ flops: 1, player: { mode: 'down', fallBackward: true } });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const seam = window.__TEST__!,
+          p = seam.getState().player as Fighter;
+        const pose = seam.getCharacterPose!(0)!;
+        const head = pose.joints.Head;
+        return (head.x - p.x) * Math.sin(p.angle) + (head.z - p.z) * Math.cos(p.angle);
+      }),
+    )
+    .toBeLessThan(-0.3);
+  await page.evaluate(() => window.__TEST__!.inspectCharacter!('side'));
+  await expect
+    .poll(() => page.evaluate(() => window.__TEST__!.getCharacterPose!(0)!.joints.Head.y))
+    .toBeLessThan(0.55);
+  await page.screenshot({ path: info.outputPath('backward-flop.png') });
+  await press(null);
+});

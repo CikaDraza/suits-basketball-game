@@ -344,8 +344,6 @@
       "period": 0.2,
       "sideReach": 0.16,
       "behindForward": -0.5,
-      "fullMoveThreshold": 0.95,
-      "movingLossChance": 0.9,
       "doubleFlickWindow": 0.32
     },
     "turnRate": 14,
@@ -421,6 +419,8 @@
       "pushRange": 1.3,
       "pushMinFacing": 0.6,
       "pushSpeed": 1.8,
+      "pushRecovery": 0.42,
+      "plantedBumpScale": 0.32,
       "forearmContactTolerance": 0.13,
       "braceTorsoHeight": 0.86,
       "braceLean": 0.5

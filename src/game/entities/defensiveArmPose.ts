@@ -30,6 +30,13 @@ export function applyDefensiveArmPose(
   pose.rElbow = 1.65;
   pose.lIn = pose.rIn = 0;
   if (hands === 'ready') return;
+  if (hands === 'charge') {
+    pose.lDown = pose.rDown = 1.35;
+    pose.lPitch = pose.rPitch = -0.25;
+    pose.lIn = pose.rIn = 0.3;
+    pose.lElbow = pose.rElbow = 0.65;
+    return;
+  }
   if (hands === 'left' || hands === 'wide') {
     pose.lDown = 0;
     pose.lPitch = 0;

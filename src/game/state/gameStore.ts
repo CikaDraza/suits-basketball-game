@@ -16,14 +16,20 @@ export type GameSession =
   | { kind: 'training'; drill: 'movement' | 'solo' }
   | { kind: 'training'; drill: 'one-on-one'; role: 'offense' | 'defense' };
 
-// Future drills have a contract, but cannot be started until implemented.
-export type PlayableSession = { kind: 'duel' } | { kind: 'training'; drill: 'movement' };
+export const isSoloPractice = (session: GameSession) =>
+  session.kind === 'training' && session.drill === 'solo';
+export const practiceAttacker = (session: GameSession): PlayerSlot | null =>
+  session.kind === 'training' && session.drill === 'one-on-one'
+    ? session.role === 'offense'
+      ? 0
+      : 1
+    : null;
 export const isFreeMovement = (session: GameSession) =>
   session.kind === 'training' && session.drill === 'movement';
 
 export interface GameStore extends HudSnapshot {
   session: GameSession;
-  startSession: (session: PlayableSession) => void;
+  startSession: (session: GameSession) => void;
   screen: GameScreen;
   health: number;
   maxHealth: number;
@@ -48,26 +54,31 @@ export interface GameStore extends HudSnapshot {
 
 /** Fresh tuples on reset keep previous store snapshots immutable. */
 export function createInitialHudSnapshot(session: GameSession = { kind: 'duel' }): HudSnapshot {
+  const solo = isSoloPractice(session);
+  const movement = isFreeMovement(session);
   return {
     score: 0,
     cpuScore: 0,
     energies: [config.player.energyMax, config.player.energyMax],
     modes: ['idle', 'idle'],
-    owner: -1,
-    ballState: isFreeMovement(session) ? 'inactive' : 'inbound',
+    owner: solo ? 0 : -1,
+    ballState: movement ? 'inactive' : solo ? 'held' : 'inbound',
     charge: 0,
     message: isFreeMovement(session)
       ? 'Free Movement · Movement, Defense, Footwork.'
-      : INITIAL_MESSAGE,
-    cpu: !isFreeMovement(session),
-    phase: isFreeMovement(session) ? 'LIVE' : 'INBOUND_PHASE',
-    inbound: isFreeMovement(session)
-      ? null
-      : {
-          stage: 'POSITIONING',
-          remaining: config.inbound.positionTime,
-          owner: level.initialOwner,
-        },
+      : solo
+        ? 'Solo Practice · Dribble and shoot.'
+        : INITIAL_MESSAGE,
+    cpu: !movement && !solo,
+    phase: movement || solo ? 'LIVE' : 'INBOUND_PHASE',
+    inbound:
+      movement || solo
+        ? null
+        : {
+            stage: 'POSITIONING',
+            remaining: config.inbound.positionTime,
+            owner: practiceAttacker(session) ?? level.initialOwner,
+          },
     handling: ['none', 'none'],
     holdProgress: 0,
     passType: null,
@@ -139,14 +150,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   resume: () => {
     if (get().screen === 'paused') get().setScreen('playing');
   },
-  reset: () => {
-    const session = get().session;
-    if (session.kind === 'duel') get().startSession({ kind: 'duel' });
-    else if (session.drill === 'movement')
-      get().startSession({ kind: 'training', drill: 'movement' });
-  },
+  reset: () => get().startSession(get().session),
   startSession: (session) => {
-    if (session.kind !== 'duel' && !isFreeMovement(session)) return;
     useInputStore.getState().flush();
     set((state) => ({
       ...createInitialHudSnapshot(session),

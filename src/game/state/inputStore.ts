@@ -5,13 +5,14 @@ import { config } from '../data/gameConfig';
 import { createMovementTracker } from '../simulation/heldMovement';
 
 export type InputAction =
-  'actionA' | 'actionB' | 'jump' | 'inbound' | 'handLeft' | 'handRight' | 'pause';
+  'actionA' | 'actionB' | 'chargeStance' | 'jump' | 'inbound' | 'handLeft' | 'handRight' | 'pause';
 
 interface InputState {
   moveX: number;
   moveZ: number;
   actionA: boolean;
   actionB: boolean;
+  chargeStance: boolean;
   jump: boolean;
   inbound: boolean;
   handLeft: boolean;
@@ -30,6 +31,7 @@ const EMPTY_INPUT: InputState = {
   moveZ: 0,
   actionA: false,
   actionB: false,
+  chargeStance: false,
   jump: false,
   inbound: false,
   handLeft: false,
@@ -81,6 +83,7 @@ export const useInputStore = create<InputStore>((set) => ({
       state.moveZ === 0 &&
       !state.actionA &&
       !state.actionB &&
+      !state.chargeStance &&
       !state.jump &&
       !state.inbound &&
       !state.handLeft &&

@@ -94,12 +94,10 @@ async function doubleFlick(page: Page, slot: 0 | 1, kind: 'up' | 'brace') {
     },
     { slot, kind },
   );
-  if (kind === 'up')
-    await expect.poll(async () => (await readPlayer(page, slot)).defenseHands).toBe('wave');
 }
 
 for (const legend of ['shaq', 'chuck'] as const) {
-  test(`${legend}: both defenders hold anatomical arm poses, wave, and clear on neutral/pause/reconnect`, async ({
+  test(`${legend}: both defenders hold anatomical arm poses and clear on neutral/pause/reconnect`, async ({
     page,
   }, info) => {
     test.setTimeout(90_000);
@@ -144,15 +142,14 @@ for (const legend of ['shaq', 'chuck'] as const) {
       window.__TEST__!.teleport('ball', [11, 1, -5]);
     }, legend);
     for (const slot of [0, 1] as const) {
-      for (const [index, hands] of (['left', 'right', 'up', 'brace', 'wave'] as const).entries()) {
+      for (const [index, hands] of (['left', 'right', 'up', 'brace'] as const).entries()) {
         await direction(page, slot, 'none');
         await page.evaluate(({ slot, angle }) => window.__TEST__!.setFacing!(slot, angle), {
           slot,
           angle: (index * Math.PI) / 2,
         });
         const before = await readPlayer(page, slot);
-        if (hands === 'wave') await doubleFlick(page, slot, 'up');
-        else await direction(page, slot, hands);
+        await direction(page, slot, hands);
         await page.waitForTimeout(450);
         const pose = (await page.evaluate(
           (slot) => window.__TEST__!.getCharacterPose!(slot),
@@ -213,25 +210,6 @@ for (const legend of ['shaq', 'chuck'] as const) {
               ).toBeGreaterThan(0.97);
             }
           }
-          if (hands === 'wave') {
-            const frames = await page.evaluate(async (slot) => {
-              const poses = [];
-              for (let i = 0; i < 8; i++) {
-                await new Promise((resolve) => setTimeout(resolve, 65));
-                poses.push(window.__TEST__!.getCharacterPose!(slot)!.joints);
-              }
-              return poses;
-            }, slot);
-            for (const name of ['LeftHand', 'RightHand']) {
-              const points = frames.map((frame) => frame[name]);
-              const distance = Math.max(
-                ...points.map((p) =>
-                  Math.hypot(p.x - points[0].x, p.y - points[0].y, p.z - points[0].z),
-                ),
-              );
-              expect(distance).toBeGreaterThan(0.08);
-            }
-          }
         }
         const after = await readPlayer(page, slot);
         expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeLessThan(0.02);
@@ -244,8 +222,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await page.keyboard.press('Escape');
     await expect.poll(async () => (await readPlayer(page, 0)).defenseHands).toBe('none');
     await direction(page, 0, 'none');
-    await doubleFlick(page, 0, 'up');
-    await page.screenshot({ path: info.outputPath('defensive-wave.png') });
+    await direction(page, 0, 'up');
     await page.evaluate(() => {
       window.__defenseConnected[0] = false;
     });
@@ -257,7 +234,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     expect((await readPlayer(page, 0)).defenseHands).toBe('none');
     await direction(page, 0, 'none');
     await direction(page, 0, 'left');
-    // Forearm contact: a held rear pose cannot shove; a second flick commits one physical push.
+    // Forearm contact: a held rear pose cannot shove; a double forward flick commits one physical push.
     await direction(page, 0, 'none');
     await page.evaluate(() => {
       window.__TEST__!.teleport('player', [6, 0.95, 0]);
@@ -269,7 +246,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     expect((await page.evaluate(() => window.__TEST__!.getState())).defensePushes).toBe(0);
     await page.screenshot({ path: info.outputPath('forearm-check.png') });
     await direction(page, 0, 'none');
-    await doubleFlick(page, 0, 'brace');
+    await doubleFlick(page, 0, 'up');
     await page.waitForTimeout(700);
     await writeFile(
       info.outputPath('push-contact.json'),

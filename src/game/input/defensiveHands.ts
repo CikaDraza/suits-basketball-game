@@ -8,7 +8,7 @@ import {
 } from './skillGesture';
 
 export type DefensiveHands = 'none' | 'left' | 'right' | 'wide' | 'up' | 'wave' | 'brace' | 'push';
-export type DefensiveArmMode = DefensiveHands | 'ready';
+export type DefensiveArmMode = DefensiveHands | 'ready' | 'charge';
 
 /** Neutral releases an accepted action; held input preserves its anatomical side. */
 export function readDefensiveHands(
@@ -108,22 +108,19 @@ export function createDefensiveHandInput(doubleWindow: number, observe?: Gesture
         const double = event.kind === lastKind && sample.time - lastAt <= doubleWindow;
         debug.locked =
           event.kind === 'front'
-            ? double
-              ? 'wave'
-              : 'up'
+            ? 'up'
             : event.kind === 'behind'
               ? 'brace'
               : event.hand === 1
                 ? 'left'
                 : 'right';
-        const action = `defense_${double && event.kind === 'behind' ? 'push' : debug.locked}`;
+        const action = `defense_${double && event.kind === 'front' ? 'push' : debug.locked}`;
         observe?.({ stage: 'requested', gesture: event, action });
         observe?.({ stage: 'accepted', gesture: event, action });
         debug.facing = event.facing;
         debug.cameraAngle = sample.cameraAngle;
         debug.last = event;
-        if (double && event.kind === 'behind')
-          pending = { facing: event.facing, time: sample.time };
+        if (double && event.kind === 'front') pending = { facing: event.facing, time: sample.time };
         lastKind = double ? '' : event.kind;
         lastAt = double ? -Infinity : sample.time;
       }

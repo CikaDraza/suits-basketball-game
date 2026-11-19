@@ -1,6 +1,6 @@
 import { PORTRAIT_PATHS } from '../../game/assets/manifest';
 import { config } from '../../game/data/gameConfig';
-import { isFreeMovement, useGameStore } from '../../game/state/gameStore';
+import { isFreeMovement, isSoloPractice, useGameStore } from '../../game/state/gameStore';
 import type { PlayerSlot } from '../../game/simulation/types';
 import {
   isPerfectCharge,
@@ -95,17 +95,27 @@ const pauseGame = () => useGameStore.getState().pause();
 
 /** Each changing HUD field owns its subscription; the layout has no store subscription. */
 export function HUD() {
-  const movement = useGameStore((s) => isFreeMovement(s.session));
+  const session = useGameStore((s) => s.session);
+  const movement = isFreeMovement(session);
+  const solo = isSoloPractice(session);
+  const label =
+    session.kind === 'duel'
+      ? `FIRST TO ${config.score.winTarget}`
+      : session.drill === 'one-on-one'
+        ? `1v1 · ${session.role.toUpperCase()}`
+        : solo
+          ? 'SOLO PRACTICE'
+          : 'FREE MOVEMENT';
   return (
     <div className="hud">
       <header className="hud-header">
         <FighterChip slot={0} />
         <div className="match-chip">
-          <span className="micro">{movement ? 'TRAINING' : 'NO FOULS'}</span>
-          <b>{movement ? 'FREE MOVEMENT' : `FIRST TO ${config.score.winTarget}`}</b>
+          <span className="micro">{session.kind === 'training' ? 'TRAINING' : 'NO FOULS'}</span>
+          <b>{label}</b>
           <span className="live-dot">● LIVE</span>
         </div>
-        {!movement && <FighterChip slot={1} />}
+        {!movement && !solo && <FighterChip slot={1} />}
       </header>
       <div className="court-heading">
         <span>THE LAST DANCE</span>

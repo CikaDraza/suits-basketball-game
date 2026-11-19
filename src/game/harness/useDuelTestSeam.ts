@@ -5,7 +5,7 @@ import { useThree } from '@react-three/fiber';
 import { Vector3 } from 'three';
 import { config, level } from '../data/gameConfig';
 import { duel, bodies, resetDuel, skillInputs } from '../entities/Duel';
-import { isFreeMovement, useGameStore } from '../state/gameStore';
+import { useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
 import { useHarnessStore } from '../state/harnessStore';
 import { extendTestSeam } from './exposeTestSeam';
@@ -124,11 +124,11 @@ export function useDuelTestSeam(): void {
       }),
       getEntities: () => [
         { id: 'player', type: 'player', position: bodies.players[0]?.translation() },
-        ...(!isFreeMovement(useGameStore.getState().session)
-          ? [
-              { id: 'opponent', type: 'opponent', position: bodies.players[1]?.translation() },
-              { id: 'ball', type: duel.ballState, position: bodies.ball?.translation() },
-            ]
+        ...(bodies.players[1]
+          ? [{ id: 'opponent', type: 'opponent', position: bodies.players[1].translation() }]
+          : []),
+        ...(bodies.ball
+          ? [{ id: 'ball', type: duel.ballState, position: bodies.ball.translation() }]
           : []),
         { id: 'hoop', type: 'static', position: level.hoop },
         { id: 'court', type: 'static', active: true },

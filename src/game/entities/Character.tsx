@@ -322,6 +322,7 @@ export function Character({ index, legend }: CharacterProps) {
     resets: 0,
     contactSide: 1 as -1 | 1,
     downS: 0,
+    fallDirection: 1,
     liftY: 0,
     offX: 0,
     offZ: 0,
@@ -398,30 +399,35 @@ export function Character({ index, legend }: CharacterProps) {
     const preview = harness.testMode ? harness.defensivePose[index] : null;
     const pushAge = t - (preview === 'push' ? harness.defensivePoseAt[index] : p.defensePushAt);
     const pushingArms = pushAge >= 0 && pushAge < config.defense.hands.pushDuration;
-    const explicitHands = preview ?? (pushingArms ? 'push' : p.defenseHands);
+    const explicitHands = p.chargeStance
+      ? 'charge'
+      : (preview ?? (pushingArms ? 'push' : p.defenseHands));
+    const staggering = t < p.staggerUntil;
     const jumpActive = p.jump.phase !== 'grounded';
-    const states = deriveStates({
-      mode: p.mode,
-      controlled,
-      handling: p.handling,
-      receiving,
-      ballState: duel.ballState,
-      inboundOwner: duel.inboundOwner,
-      inboundStage: duel.inboundStage,
-      slot: index,
-      opponentHasBall: duel.owner === 1 - index && duel.ballState === 'held',
-      opponentDistance,
-      guardRange: config.defense.guardRange,
-      defenseReleased: p.defenseReleased,
-      contactReady: explicitHands === 'brace' || explicitHands === 'push',
-      sinceRequest: t - p.passRequestAt,
-      sinceCut: t - st.lastCut,
-      callForPass: {
-        fallback: config.animation.callForPass.fallback as CallForPassFallback,
-        requestHold: config.animation.callForPass.requestHold,
-        cutHold: config.animation.callForPass.cutHold,
-      },
-    });
+    const states = p.chargeStance
+      ? ({ posture: 'upright', upper: 'relaxed' } as const)
+      : deriveStates({
+          mode: p.mode,
+          controlled,
+          handling: p.handling,
+          receiving,
+          ballState: duel.ballState,
+          inboundOwner: duel.inboundOwner,
+          inboundStage: duel.inboundStage,
+          slot: index,
+          opponentHasBall: duel.owner === 1 - index && duel.ballState === 'held',
+          opponentDistance,
+          guardRange: config.defense.guardRange,
+          defenseReleased: p.defenseReleased,
+          contactReady: explicitHands === 'brace' || explicitHands === 'push',
+          sinceRequest: t - p.passRequestAt,
+          sinceCut: t - st.lastCut,
+          callForPass: {
+            fallback: config.animation.callForPass.fallback as CallForPassFallback,
+            requestHold: config.animation.callForPass.requestHold,
+            cutHold: config.animation.callForPass.cutHold,
+          },
+        });
     const blendK = dampingFactor(PO.blendRate, dt);
     st.wPost += ((states.posture === 'post' ? 1 : 0) - st.wPost) * blendK;
     st.wDefensive += ((states.posture === 'defensive' ? 1 : 0) - st.wDefensive) * blendK;
@@ -501,6 +507,9 @@ export function Character({ index, legend }: CharacterProps) {
       liftH += (G.lift.post - liftH) * st.wPost;
       const pace = clamp(gait.speed / config.player[legend].speed, 0, 1);
       stride = legRig.legLength * strideF * (G.slowStrideScale + (1 - G.slowStrideScale) * pace);
+      // A shove gets short recovery steps from measured travel, even below walk distance.
+      GAIT_TUNING.startDistance = staggering ? G.startDistance / 3 : G.startDistance;
+      if (staggering) stride *= 0.65;
       // a planted foot is replanted before it leaves the leg's real horizontal reach at the
       // posture's pelvis height (otherwise the pelvis would have to squat to keep contact)
       const thighY =
@@ -549,7 +558,7 @@ export function Character({ index, legend }: CharacterProps) {
     );
     defense?.step(
       frameDt,
-      p.mode === 'post' && !controlled,
+      p.mode === 'post' && !controlled && !p.chargeStance,
       (grounded || jumpActive) &&
         !controlled &&
         !receiving &&
@@ -824,17 +833,18 @@ export function Character({ index, legend }: CharacterProps) {
         target.rDown = 0.9;
       }
     }
-    const defensiveHands =
-      preview ??
-      (pushingArms
-        ? 'push'
-        : p.defenseHands !== 'none'
-          ? p.defenseHands
-          : (p.mode === 'post' && !controlled && !awaitingPass) ||
-              states.upper === 'guard' ||
-              states.upper === 'deny'
-            ? 'ready'
-            : 'none');
+    const defensiveHands = p.chargeStance
+      ? 'charge'
+      : (preview ??
+        (pushingArms
+          ? 'push'
+          : p.defenseHands !== 'none'
+            ? p.defenseHands
+            : (p.mode === 'post' && !controlled && !awaitingPass) ||
+                states.upper === 'guard' ||
+                states.upper === 'deny'
+              ? 'ready'
+              : 'none'));
     if (jumpActive && !jumpLayer) {
       target.rPitch = -2.9;
       target.rDown = 1.25;
@@ -866,6 +876,13 @@ export function Character({ index, legend }: CharacterProps) {
     if (st.brace > 0.01 && opponent) {
       const behind = (opponent.x - p.x) * fx + (opponent.z - p.z) * fz < 0;
       target.lean += (behind ? -1 : 1) * PO.braceLean * st.brace;
+    }
+
+    if (p.chargeStance) {
+      target.lean = target.twist = 0;
+    } else if (staggering) {
+      // Tip the upper body forward as the gait catches the backward travel.
+      target.lean = Math.max(target.lean, 0.22);
     }
 
     // ---------- 4. smooth + apply FK (rotations rebuilt from the bind pose) ----------
@@ -900,7 +917,8 @@ export function Character({ index, legend }: CharacterProps) {
     // ---------- root: facing, fall, stun wobble, dunk lift ----------
     turn.current.rotation.y = p.angle;
     st.downS += ((p.mode === 'down' ? 1 : 0) - st.downS) * dampingFactor(12, dt);
-    fall.current.rotation.x = (st.downS * Math.PI) / 2;
+    if (p.mode === 'down') st.fallDirection = p.fallBackward ? -1 : 1;
+    fall.current.rotation.x = (st.fallDirection * st.downS * Math.PI) / 2;
     fall.current.position.y = rig.hipH - st.downS * (rig.hipH - 0.24);
     fall.current.rotation.z = p.mode === 'stun' ? Math.sin(t * 22) * 0.13 : 0;
 
@@ -1130,8 +1148,9 @@ export function Character({ index, legend }: CharacterProps) {
       opponent ? { ...opponent, y: bodies.players[1 - index]?.translation().y } : null,
       Math.min(rawDt, 0.25),
       defensiveArmsEnabled &&
-        defense?.debug.phase !== 'exit' &&
-        !(importedDefenseActive && !defense.debug.armsOwned),
+        (p.chargeStance ||
+          (defense?.debug.phase !== 'exit' &&
+            !(importedDefenseActive && !defense.debug.armsOwned))),
       pushAge / config.defense.hands.pushDuration,
       t,
     );

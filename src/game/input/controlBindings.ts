@@ -5,6 +5,7 @@ export const CONTROL_ACTIONS = [
   'MOVE_DOWN',
   'ACTION_A',
   'ACTION_B',
+  'CHARGE_STANCE',
   'JUMP',
   'INBOUND',
   'HAND_LEFT',
@@ -42,6 +43,7 @@ export const ACTION_LABELS: Record<ControlContext, Record<ControlAction, string>
     MOVE_DOWN: 'Kretanje nazad',
     ACTION_A: 'Šut · drži i pusti',
     ACTION_B: 'Stav / zagrađivanje',
+    CHARGE_STANCE: 'Postavljanje za charge / dupli pritisak za flop',
     JUMP: 'Mali skok / blok',
     INBOUND: 'Inbound · dodavanje sa strane',
     HAND_LEFT: 'Leva ruka · dribling / crossover',
@@ -59,6 +61,7 @@ export const ACTION_LABELS: Record<ControlContext, Record<ControlAction, string>
     MOVE_DOWN: 'Kretanje nazad',
     ACTION_A: 'Contest / pokušaj krađe',
     ACTION_B: 'Niski stav / kontakt',
+    CHARGE_STANCE: 'Postavljanje za charge / dupli pritisak za flop',
     JUMP: 'Mali skok / blok',
     INBOUND: 'Inbound · dodavanje sa strane',
     HAND_LEFT: 'Leva ruka (sa loptom)',
@@ -86,6 +89,7 @@ export function createDefaultProfile(): ControlProfile {
       MOVE_DOWN: ['KeyS', 'ArrowDown'],
       ACTION_A: ['KeyR', 'Space'],
       ACTION_B: ['KeyQ', 'KeyJ'],
+      CHARGE_STANCE: ['KeyV'],
       JUMP: ['KeyF'],
       INBOUND: ['KeyE'],
       HAND_LEFT: ['KeyZ'],
@@ -102,7 +106,8 @@ export function createDefaultProfile(): ControlProfile {
       MOVE_UP: { kind: 'axis', index: 1, sign: -1 },
       MOVE_DOWN: { kind: 'axis', index: 1, sign: 1 },
       ACTION_A: { kind: 'button', index: 2 },
-      ACTION_B: { kind: 'button', index: 1 },
+      ACTION_B: { kind: 'button', index: 4 },
+      CHARGE_STANCE: { kind: 'button', index: 1 },
       JUMP: { kind: 'button', index: 3 },
       INBOUND: { kind: 'button', index: 0 },
       HAND_LEFT: null,
@@ -116,14 +121,13 @@ export function createDefaultProfile(): ControlProfile {
     mobile: {
       square: 'ACTION_A',
       triangle: 'ACTION_B',
-      circle: 'HAND_LEFT',
+      circle: 'CHARGE_STANCE',
       cross: 'HAND_RIGHT',
       jump: 'JUMP',
     },
   });
   const offense = context(),
     defense = context();
-  defense.mobile.circle = null;
   defense.mobile.cross = null;
   return { offense, defense, deadzone: 0.18, padNeutral: {} };
 }
@@ -213,13 +217,16 @@ export function restoreProfile(value: unknown): ControlProfile {
           out[context].keyboard[action] = out[context].keyboard[action].filter(
             (key) => key !== 'KeyE',
           );
-    if (!Object.hasOwn(data.gamepad ?? {}, 'JUMP')) {
-      // Triangle/Y is now dedicated to jump. Migrate the previous default stance
-      // to Circle/B, preserving custom stance bindings that use another control.
+    if (!Object.hasOwn(data.gamepad ?? {}, 'CHARGE_STANCE')) {
+      // Move legacy face-button stance to L1/LB and reserve Circle/B for charge.
       for (const action of CONTROL_ACTIONS) {
-        if (action === 'JUMP') continue;
+        if (action === 'CHARGE_STANCE' || action === 'JUMP') continue;
         const binding = out[context].gamepad[action];
-        if (binding?.kind === 'button' && binding.index === 3)
+        if (
+          binding?.kind === 'button' &&
+          (binding.index === 1 ||
+            (binding.index === 3 && !Object.hasOwn(data.gamepad ?? {}, 'JUMP')))
+        )
           out[context].gamepad[action] =
             action === 'ACTION_B' &&
             !CONTROL_ACTIONS.some(
@@ -227,9 +234,9 @@ export function restoreProfile(value: unknown): ControlProfile {
                 other !== action &&
                 other !== 'JUMP' &&
                 out[context].gamepad[other]?.kind === 'button' &&
-                out[context].gamepad[other]?.index === 1,
+                out[context].gamepad[other]?.index === 4,
             )
-              ? { kind: 'button', index: 1 }
+              ? { kind: 'button', index: 4 }
               : null;
       }
     }
@@ -251,6 +258,12 @@ export function restoreProfile(value: unknown): ControlProfile {
     }
     for (const slot of TOUCH_SLOTS) {
       const action = data.mobile?.[slot];
+      if (
+        slot === 'circle' &&
+        !Object.hasOwn(data.gamepad ?? {}, 'CHARGE_STANCE') &&
+        (action == null || action === 'HAND_LEFT')
+      )
+        continue;
       if (action === null || CONTROL_ACTIONS.includes(action as ControlAction))
         out[context].mobile[slot] = action;
     }

@@ -30,7 +30,12 @@ export interface Fighter {
   defensePushAt: number;
   defensePushApplied: boolean;
   defensePushCooldown: number;
-  lastQ: number;
+  lastChargePress: number;
+  prevChargeStance: boolean;
+  chargeStance: boolean;
+  fallBackward: boolean;
+  staggerUntil: number;
+  staggerYaw: number;
   lastR: number;
   taps: number;
   prevQ: boolean;

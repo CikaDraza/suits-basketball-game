@@ -24,6 +24,7 @@ export function useInputBridge() {
     const actions = {
       ACTION_A: { keyboard: false, touch: false, external: false },
       ACTION_B: { keyboard: false, touch: false, external: false },
+      CHARGE_STANCE: { keyboard: false, touch: false, external: false },
       JUMP: { keyboard: false, touch: false, external: false },
       INBOUND: { keyboard: false, touch: false, external: false },
       HAND_LEFT: { keyboard: false, touch: false, external: false },
@@ -84,6 +85,7 @@ export function useInputBridge() {
       if (
         action === 'ACTION_A' ||
         action === 'ACTION_B' ||
+        action === 'CHARGE_STANCE' ||
         action === 'JUMP' ||
         action === 'INBOUND' ||
         action === 'HAND_LEFT' ||
@@ -96,13 +98,15 @@ export function useInputBridge() {
             ? 'actionA'
             : action === 'ACTION_B'
               ? 'actionB'
-              : action === 'JUMP'
-                ? 'jump'
-                : action === 'INBOUND'
-                  ? 'inbound'
-                  : action === 'HAND_LEFT'
-                    ? 'handLeft'
-                    : 'handRight',
+              : action === 'CHARGE_STANCE'
+                ? 'chargeStance'
+                : action === 'JUMP'
+                  ? 'jump'
+                  : action === 'INBOUND'
+                    ? 'inbound'
+                    : action === 'HAND_LEFT'
+                      ? 'handLeft'
+                      : 'handRight',
           Object.values(sources).some(Boolean),
         );
       }

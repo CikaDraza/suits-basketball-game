@@ -69,7 +69,7 @@ async function rs(page: Page, action: 'left' | 'brace' | 'none') {
     .toBe(action);
 }
 
-async function doubleBrace(page: Page) {
+async function forwardPush(page: Page) {
   await page.evaluate(async () => {
     const seam = window.__TEST__!;
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -80,7 +80,7 @@ async function doubleBrace(page: Page) {
       if (!active) return;
       const p = player(),
         origin = seam.project!([p.x, 1.3, p.z]);
-      const tip = seam.project!([p.x - Math.sin(p.angle), 1.3, p.z - Math.cos(p.angle)]);
+      const tip = seam.project!([p.x + Math.sin(p.angle), 1.3, p.z + Math.cos(p.angle)]);
       const dx = tip.x - origin.x,
         dy = tip.y - origin.y,
         length = Math.hypot(dx, dy);
@@ -91,7 +91,7 @@ async function doubleBrace(page: Page) {
     await frame();
     await frame();
     flick(true);
-    for (let n = 0; n < 30 && player().defenseHands !== 'brace'; n++) await frame();
+    for (let n = 0; n < 30 && player().defenseHands !== 'up'; n++) await frame();
     flick(false);
     for (let n = 0; n < 30 && player().defenseHands !== 'none'; n++) await frame();
     flick(true);
@@ -112,8 +112,8 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await page.getByRole('button', { name: /FREE MOVEMENT/ }).click();
     await page.getByRole('button', { name: /START TRAINING/ }).click();
     await rs(page, 'brace');
-    await doubleBrace(page);
-    await doubleBrace(page);
+    await forwardPush(page);
+    await forwardPush(page);
     await page.waitForTimeout(900);
     const debug = await page.evaluate(() => window.__TEST__!.getGameplayDebug!(0));
     await writeFile(info.outputPath('cooldown.json'), JSON.stringify(debug, null, 2));
@@ -151,7 +151,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
       });
     await rs(page, 'brace');
     await page.waitForTimeout(600);
-    await doubleBrace(page);
+    await forwardPush(page);
     await page.waitForTimeout(1000);
     await expect.poll(async () => (await push())?.animationPerformed).toBe(true);
     const missed = await push();
@@ -166,8 +166,11 @@ for (const legend of ['shaq', 'chuck'] as const) {
     });
     await rs(page, 'brace');
     await page.waitForTimeout(700);
-    await doubleBrace(page);
-    await page.waitForTimeout(800);
+    const firstStepCount = await page.evaluate(() => window.__TEST__!.getLocomotion!(1)!.steps);
+    await forwardPush(page);
+    await expect
+      .poll(() => page.evaluate(() => window.__TEST__!.getLocomotion!(1)!.steps))
+      .toBeGreaterThan(firstStepCount);
     await writeFile(
       info.outputPath('contact-attempt.json'),
       JSON.stringify(
@@ -237,7 +240,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
       await page.screenshot({ path: info.outputPath(`brace-${view}.png`) });
     }
     await page.evaluate(() => window.__TEST__!.inspectCharacter!(null));
-    await doubleBrace(page);
+    await forwardPush(page);
     const phases = await page.evaluate(async () => {
       const seam = window.__TEST__!,
         result = [];

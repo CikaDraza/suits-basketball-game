@@ -12,7 +12,7 @@ import {
 import { Mesh, Group, SRGBColorSpace } from 'three';
 import { config, level } from '../data/gameConfig';
 import { TEXTURE_PATHS } from '../assets/manifest';
-import { isFreeMovement, useGameStore } from '../state/gameStore';
+import { isFreeMovement, isSoloPractice, useGameStore } from '../state/gameStore';
 import { useHarnessStore } from '../state/harnessStore';
 import { useDuelTestSeam } from '../harness/useDuelTestSeam';
 import { isSimulationRunning } from '../simulation/isSimulationRunning';
@@ -122,6 +122,7 @@ function DuelBall() {
 
 export function DuelArena() {
   const movement = useGameStore((s) => isFreeMovement(s.session));
+  const solo = useGameStore((s) => isSoloPractice(s.session));
   const revision = useGameStore((s) => s.revision);
   const rings = useRef<Group>(null);
   const burst = useRef<Mesh>(null);
@@ -157,17 +158,17 @@ export function DuelArena() {
   return (
     <>
       <DuelPlayer index={0} />
-      {!movement && <DuelPlayer index={1} />}
+      {!movement && !solo && <DuelPlayer index={1} />}
       {!movement && <DuelBall />}
       <group ref={rings}>
-        {PLAYER_COLORS.slice(0, movement ? 1 : 2).map((color) => (
+        {PLAYER_COLORS.slice(0, movement || solo ? 1 : 2).map((color) => (
           <mesh key={color} rotation={[-Math.PI / 2, 0, 0]}>
             <ringGeometry args={[0.68, 0.73, 32]} />
             <meshBasicMaterial color={color} transparent opacity={0.85} depthWrite={false} />
           </mesh>
         ))}
       </group>
-      {!movement && <InboundCountdown />}
+      {!movement && !solo && <InboundCountdown />}
       <FootContactDebug />
       <mesh ref={burst} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[0.4, 0.44, 24]} />

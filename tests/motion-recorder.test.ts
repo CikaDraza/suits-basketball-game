@@ -166,7 +166,7 @@ test('gesture audit reports the actual queue/reject/cancel policy without changi
   assert.equal(events.at(-1)?.stage, 'cancelled');
   assert.equal(buffer.take(), null);
 });
-test('defensive audit correlates accepted body-relative hands and distinguishes a double rear push', () => {
+test('defensive audit correlates accepted body-relative hands and distinguishes a double forward push', () => {
   const events: GestureAudit[] = [];
   const buffer = createDefensiveHandInput(0.32, (e) => events.push(e));
   const sample = (time: number, vector = { x: 0, z: 0 }) =>
@@ -184,9 +184,9 @@ test('defensive audit correlates accepted body-relative hands and distinguishes 
   assert.equal(sample(1.1, { x: 1, z: 0 }), 'left');
   assert.equal(events.at(-1)?.action, 'defense_left');
   sample(2);
-  sample(2.05, { x: 0, z: 1 });
+  sample(2.05, { x: 0, z: -1 });
   sample(2.1);
-  sample(2.15, { x: 0, z: 1 });
+  sample(2.15, { x: 0, z: -1 });
   assert.equal(events.at(-1)?.action, 'defense_push');
   assert.notEqual(buffer.takePush(2.16), null);
 });

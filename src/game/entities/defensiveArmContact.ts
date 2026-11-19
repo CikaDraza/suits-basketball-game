@@ -217,6 +217,31 @@ export function createDefensiveArmContact(
             normal.set(0, 0, 1);
             fingers.set(0, 1, 0);
             pole.set(sign, 0, 0.1);
+          } else if (mode === 'charge') {
+            solver.arm.upper.getWorldPosition(shoulder);
+            target
+              .copy(floor)
+              .addScaledVector(forward, 0.26)
+              .addScaledVector(left, sign * 0.025);
+            target.y = floor.y + config.player[legend].height * 0.55 + sign * 0.025;
+            target.sub(shoulder);
+            const distance = target.length();
+            direction.set(target.dot(left), target.y, target.dot(forward)).normalize();
+            flex =
+              (Math.acos(
+                clamp(
+                  (distance ** 2 - solver.upperLength ** 2 - solver.foreLength ** 2) /
+                    (2 * solver.upperLength * solver.foreLength),
+                  -1,
+                  1,
+                ),
+              ) *
+                180) /
+              Math.PI;
+            elevation = 0;
+            normal.set(0, 0, 1);
+            fingers.set(-sign * 0.55, -1, 0);
+            pole.set(sign * 0.85, -0.6, 0.45);
           } else if (contact) {
             solver.arm.upper.getWorldPosition(shoulder);
             const extension = mode === 'push' ? push.extension : 0;

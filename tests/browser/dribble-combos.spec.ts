@@ -96,16 +96,23 @@ async function perform(
         direction === 'side'
           ? [(-hand * dz) / length, (-hand * dx) / length]
           : [(sign * dx) / length, (-sign * dz) / length];
-      window.__comboAxes[0] = moving;
+
       window.__comboAxes[2] = vector[0];
       window.__comboAxes[3] = vector[1];
       const frames: Snapshot[] = [start];
       let released = false,
-        second = false;
-      while ((seam.getState().time as number) < start.time + 1.65) {
+        second = false,
+        movementStartedAt: number | undefined;
+      while ((seam.getState().time as number) < start.time + (moving ? 2.4 : 1.65)) {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         const s = seam.getState() as unknown as Snapshot;
         frames.push(s);
+        if (moving && s.ballControl.skill?.started) movementStartedAt ??= s.time;
+        if (movementStartedAt !== undefined) {
+          const elapsed = s.time - movementStartedAt;
+          window.__comboAxes[0] = elapsed < 0.5 ? moving : elapsed < 1.4 ? -moving : 0;
+          window.__comboAxes[2] = window.__comboAxes[3] = 0;
+        }
         if (double && !released && s.time - start.time >= 0.08) {
           window.__comboAxes[2] = window.__comboAxes[3] = 0;
           released = true;
@@ -178,26 +185,25 @@ for (const legend of ['shaq', 'chuck'] as const) {
   });
 }
 
-test('complex dribble is controlled below full movement and physically escapes at full left-stick deflection', async ({
-  page,
-}) => {
-  await installPad(page);
-  await bootGame(page);
-  await setup(page, 1);
-  const controlled = await perform(page, 'front', 1, false, 0.6);
-  expect(controlled.at(-1)!.fumbles).toBe(0);
-  expect(controlled.every((s) => s.ball.owner === 0)).toBe(true);
-  await setup(page, 1, 42);
-  const fullSpeed = await perform(page, 'front', 1, false, 1);
-  const lost = fullSpeed.find((s) => s.ball.state === 'loose');
-  expect(lost).toBeDefined();
-  expect(lost!.ball.owner).toBe(-1);
-  expect(lost!.ball.gravityScale).toBe(1);
-  expect(lost!.ball.sensor).toBe(false);
-  expect(Math.hypot(lost!.ball.velocity.x, lost!.ball.velocity.z)).toBeGreaterThan(0.5);
-  expect(fullSpeed.at(-1)!.fumbles).toBe(1);
-  expect(
-    Math.max(...fullSpeed.map((s) => Math.hypot(s.ball.x - s.player.x, s.ball.z - s.player.z))),
-  ).toBeGreaterThan(0.6);
-  expect(fullSpeed.at(-1)!.skillInput[0].activations).toBe(1);
-});
+for (const legend of ['shaq', 'chuck'] as const) {
+  test(`${legend}: first RS dribble retains possession through full LS movement, reversal and stop`, async ({
+    page,
+  }) => {
+    await installPad(page);
+    await bootGame(page);
+    await page.evaluate((legend) => window.__TEST__!.setLegend!(0, legend), legend);
+    for (const hand of [1, -1] as const) {
+      await setup(page, hand, 42, true);
+      const frames = await perform(page, 'front', hand, false, 1);
+      expect(frames.some((s) => s.ballControl.skill?.started)).toBe(true);
+      expect(frames.every((s) => s.ball.owner === 0 && s.fumbles === 0)).toBe(true);
+      expect(
+        frames.some((s) => Math.abs((s.ballControl.lastFloorY ?? 1) - config.ball.radius) < 0.001),
+      ).toBe(true);
+      expect(frames.at(-1)!.ballControl.skill).toBeNull();
+      const positions = frames.map((s) => s.player.x);
+      expect(Math.max(...positions) - positions[0]).toBeGreaterThan(0.1);
+      expect(Math.max(...positions) - positions.at(-1)!).toBeGreaterThan(0.1);
+    }
+  });
+}

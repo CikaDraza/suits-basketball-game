@@ -215,7 +215,7 @@ test('legacy default hand axes migrate to a full camera-relative skill map', () 
   assert.deepEqual(restored.offense.gamepad.SKILL_UP, { kind: 'axis', index: 3, sign: -1 });
   assert.deepEqual(restored.offense.keyboard.HAND_LEFT, ['KeyZ']);
   assert.deepEqual(restored.defense.gamepad.ACTION_A, { kind: 'button', index: 2 });
-  assert.deepEqual(restored.offense.mobile.circle, 'HAND_LEFT');
+  assert.deepEqual(restored.offense.mobile.circle, 'CHARGE_STANCE');
 });
 
 test('custom legacy hand axes migrate to stick directions and retired hand buttons cannot double-fire', () => {

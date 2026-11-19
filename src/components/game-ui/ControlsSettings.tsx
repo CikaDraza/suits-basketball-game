@@ -284,8 +284,7 @@ export function ControlsSettings({ onBack }: { readonly onBack: () => void }) {
                     </label>
                     <p className="controls-note">
                       Vrati desnu palicu u sredinu između poteza. Dva brza povlačenja nazad daju
-                      seriju iza leđa. Pun otklon leve palice tokom ovih poteza nosi 90% rizika od
-                      gubitka kontrole lopte.
+                      seriju iza leđa.
                     </p>
                   </>
                 )}

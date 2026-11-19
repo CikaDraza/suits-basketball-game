@@ -19,7 +19,7 @@ deterministički replay i sve buduće tehnike još nisu implementirani.
 | E / Cross ili A      | INBOUND: zaseban zahtev za dodavanje u inbound pass prozoru; rani pritisak ne zakazuje dodavanje                                                                                                                                                                                                                                                           |
 | Escape               | Pauza/nastavak jednom po fizičkom pritisku                                                                                                                                                                                                                                                                                                                 |
 | Z / C                | Leva/desna ruka: pokreće dribling u mestu ili traži crossover; ne pokreće telo                                                                                                                                                                                                                                                                             |
-| Touch                | Analogni joystick i Square/Triangle; Circle/Cross biraju levu/desnu ruku u napadu                                                                                                                                                                                                                                                                          |
+| Touch                | Analogni joystick i Square/Triangle; Circle je charge/flop; Cross je desna ruka ili inbound                                                                                                                                                                                                                                                                |
 | Gamepad              | Leva palica pomera telo; desna palica je zaseban 2D smer relativan telu i kameri (default ose 2/3). Strana lopte: dva brza bočna driblinga istom rukom; suprotna strana: crossover; napred: tri brza prebacivanja; nazad: jedno iza leđa; dva brza poteza nazad: tri prebacivanja iza leđa. Cross/A inbound, Square/X šut, Triangle/Y stav, Options pauza. |
 
 Pause → Controls čuva odvojene offense/defense mape za keyboard, gamepad i mobile
@@ -49,8 +49,10 @@ Neutralni položaj spušta ruke. Obe podignute ruke računaju se kao contest u d
 pauza, reset i prelazak u napad čiste odbrambenu komandu.
 Brza serija napred i dupli potez nazad izvršavaju tri prebacivanja: početna leva
 daje leva → desna → leva → desna, a početna desna obrnuto.
-Pun otklon leve palice pri ovim potezima ima 90% rizika od fizičkog gubitka kontrole;
-lopta prelazi u loose stanje sa brzinom, umesto da ostane nalepljena za šaku.
+Pun otklon leve palice tokom RS driblinga sam po sebi ne izaziva gubitak poseda.
+Q / L1-LB / △ menja stav. V / Circle-B / ○ drži pozu za charge; dva brza
+pritiska pokreću flop unazad. Dva RS poteza napred, s neutralom između,
+pokreću Push. Držanje RS nazad daje Brace.
 Kretanje samo po sebi ne menja izabranu ruku. Detalji prvobitnih gestova,
 neutralnog stanja, migracije starih mapa i odloženih komandi su u
 [DRIBBLE-1 izveštaju](DRIBBLE_1_IMPLEMENTATION.md).

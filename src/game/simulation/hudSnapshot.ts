@@ -57,6 +57,7 @@ export function createHudSnapshot(
   runtime: HudRuntime,
   previous: HudSnapshot,
   settings: HudSettings,
+  hasOpponent = true,
 ): HudSnapshot {
   const [first, second] = runtime.players;
   const mode = (player: Fighter): Mode =>
@@ -89,7 +90,7 @@ export function createHudSnapshot(
     ballState: runtime.ballState,
     charge: first.charge,
     message: runtime.time < runtime.messageUntil ? runtime.message : '',
-    cpu: runtime.ballState !== 'inactive' && !runtime.p2Human,
+    cpu: hasOpponent && runtime.ballState !== 'inactive' && !runtime.p2Human,
     phase: runtime.ballState === 'inbound' ? 'INBOUND_PHASE' : 'LIVE',
     inbound,
     handling: reusePair(previous.handling, handling(0), handling(1)),
