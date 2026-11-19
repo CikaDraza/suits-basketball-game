@@ -159,7 +159,7 @@ test('Duel tracks jab, dribble, shot charge/release, rejected inbound, P2 isolat
   expect(player.commands.every((row) => row.slot === 0)).toBe(true);
   expect((await debug(page, 1)).commands.every((row) => row.slot === 1)).toBe(true);
   await page.evaluate(() => {
-    window.__gameplayP2Buttons = [3];
+    window.__gameplayP2Buttons = [1];
   });
   try {
     await expect

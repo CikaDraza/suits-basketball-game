@@ -1,5 +1,6 @@
 import type { Legend } from '../data/gameConfig';
 import type { DefensiveHands } from '../input/defensiveHands';
+import type { SmallJump } from './smallJump';
 import type { InboundPassPlan, InboundPassOutcome, PassPoint } from './tacticalPass';
 
 export type PlayerSlot = 0 | 1;
@@ -24,6 +25,8 @@ export interface Fighter {
   vz: number;
   hand: number;
   defenseHands: DefensiveHands;
+  /** Explicit Q exit opts out of proximity guard until the next Q entry/reset. */
+  defenseReleased: boolean;
   defensePushAt: number;
   defensePushApplied: boolean;
   defensePushCooldown: number;
@@ -31,6 +34,8 @@ export interface Fighter {
   lastR: number;
   taps: number;
   prevQ: boolean;
+  prevJump: boolean;
+  jump: SmallJump;
   prevR: boolean;
   prevInbound: boolean;
   interceptUntil: number;

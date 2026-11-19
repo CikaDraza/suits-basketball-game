@@ -35,7 +35,8 @@ for (const legend of ['shaq', 'chuck'] as const) {
           `${mode} ${i}: wrist limit saturated ${d.wristBend}`,
         );
         assert.ok(Math.abs(d.forearmTwist) < 79, `${mode} ${i}: forearm limit saturated`);
-        const lateral = mode === 'wide' || mode === (i === 0 ? 'left' : 'right');
+        const lateral =
+          mode === 'wide' || mode === (i === 0 ? 'left' : 'right') || (mode === 'brace' && i === 1);
         if (lateral) {
           assert.ok(d.elbowFlex > 7 && d.elbowFlex < 16, `${mode} ${i}: ${d.elbowFlex}°`);
           assert.ok(Math.abs(wrist.x - shoulder.x) > (d.upperLength + d.foreLength) * 0.97);
@@ -50,13 +51,18 @@ for (const legend of ['shaq', 'chuck'] as const) {
           assert.ok(d.elbowFlex > 5 && d.elbowFlex < 12);
         } else if (mode === 'ready' || mode === 'left' || mode === 'right') {
           assert.ok(wrist.z - shoulder.z > (d.upperLength + d.foreLength) * 0.5);
-          assert.ok(wrist.y > elbow.y + (d.upperLength + d.foreLength) * 0.15);
-          assert.ok(wrist.y < shoulder.y + 0.05, 'guard stays in front of the upper torso');
+          assert.ok(wrist.y > elbow.y, 'ready forearm remains available in front');
+          assert.ok(wrist.y < shoulder.y - 0.15, 'relaxed guard stays below the chest');
+          assert.ok(Math.abs(wrist.x - shoulder.x) > 0.08, 'elbows open away from the torso');
           assert.ok(d.elbowFlex > 85 && d.elbowFlex < 105);
         } else if (mode === 'brace' || mode === 'push') {
           assert.ok(wrist.z > elbow.z && elbow.z > shoulder.z);
-          assert.ok(wrist.y > elbow.y);
-          assert.ok(arm.debug.normal.z > 0.75);
+          assert.ok(
+            Math.abs(wrist.y - elbow.y) < d.foreLength * 0.3,
+            'forearm stays approximately horizontal',
+          );
+          if (mode === 'brace')
+            assert.ok(d.elbowFlex > 75 && d.elbowFlex < 105, 'contact elbow stays near 90 degrees');
         }
       }
     }

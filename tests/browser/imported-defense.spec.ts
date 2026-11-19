@@ -39,9 +39,8 @@ test('production Free Movement: keyboard walk → Q defense sequence → pause/r
   } finally {
     await page.keyboard.up('d');
   }
-  await expect
-    .poll(async () => (await locomotion()).importedDefense?.lowerWeight)
-    .toBeGreaterThan(0.98);
+  await expect.poll(async () => (await locomotion()).importedDefense?.lowerWeight).toBe(0);
+  expect((await locomotion()).importedDefense?.feetOwned).toBe(true);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   const paused = (await locomotion()).importedDefense!.time;
   await page.waitForTimeout(250);
@@ -111,7 +110,13 @@ test('defense yields to explicit hands, possession/post-up and reset; Chuck keep
   await page.evaluate(() => window.__TEST__!.setDefensivePose!(0, null));
   await expect
     .poll(() => page.evaluate(() => window.__TEST__!.getCharacterPose!(0)!.defensiveArms[0].weight))
-    .toBe(0);
+    .toBeGreaterThan(0.95);
+  expect((await defense())?.armOwner).toBe('defensive-arm-ik');
+  await page.waitForTimeout(600);
+  const ready = await page.evaluate(() => window.__TEST__!.getCharacterPose!(0)!);
+  expect(ready.joints.LeftHand.y).toBeLessThan(ready.joints.LeftArm.y - 0.1);
+  expect(ready.joints.RightHand.y).toBeLessThan(ready.joints.RightArm.y - 0.1);
+  await page.screenshot({ path: info.outputPath('neutral-keeps-ready.png') });
   await page.evaluate(() => {
     const p = window.__TEST__!.getState().player as { x: number; z: number };
     window.__TEST__!.teleport('ball', [p.x + 0.65, 1.3, p.z]);

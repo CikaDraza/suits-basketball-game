@@ -31,6 +31,9 @@ export interface PostureInput {
   opponentHasBall: boolean;
   opponentDistance: number;
   guardRange: number;
+  /** Explicit Q exit suppresses proximity guard; possession and inbound still win. */
+  defenseReleased: boolean;
+  contactReady?: boolean;
   /** seconds since this slot explicitly asked for the inbound pass (Infinity if never) */
   sinceRequest: number;
   /** seconds since the receiver last cut at speed (Infinity if never) */
@@ -64,7 +67,15 @@ export function deriveStates(s: PostureInput): DerivedStates {
     return { posture: post ? 'post' : 'upright', upper: call ? 'callForPass' : 'relaxed' };
   }
   if (inbound) return { posture: post ? 'post' : 'defensive', upper: 'deny' };
-  if (s.opponentHasBall && s.opponentDistance < s.guardRange && s.mode !== 'contest')
+  // Contact requires the deeper, supported base already used for close post work,
+  // including reaching a shorter opponent's lower torso without dropping the wrist.
+  if (s.contactReady) return { posture: 'post', upper: 'guard' };
+  if (
+    !s.defenseReleased &&
+    s.opponentHasBall &&
+    s.opponentDistance < s.guardRange &&
+    s.mode !== 'contest'
+  )
     return { posture: post ? 'post' : 'defensive', upper: 'guard' };
   return { posture: post ? 'post' : 'upright', upper: 'relaxed' };
 }

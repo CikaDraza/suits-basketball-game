@@ -34,11 +34,15 @@ import { HandContactDebug } from './HandContactDebug';
 import { createLegRig } from './legRig';
 import { createGaitState, stepGait, type GaitTuning } from './gait';
 import { deriveStates, type CallForPassFallback } from './posture';
-import { locomotionDebug } from './locomotionDebug';
+import { locomotionDebug, movementRequests } from './locomotionDebug';
 import { createImportedWalk, isolateWalkingCharacter } from './importedWalk';
 import { createImportedDefense } from './importedDefense';
+import { defensivePushPose } from './defensivePushPose';
+import { forearmContacts, pushEvidence } from '../simulation/defensivePush';
+import { createImportedJump } from './importedJump';
 
-Object.values(MODEL_PATHS).forEach((path) => useGLTF.preload(path));
+useGLTF.preload([MODEL_PATHS.shaq, ANIMATION_PATHS.shaq.defense, ANIMATION_PATHS.shaq.smallJump]);
+useGLTF.preload(MODEL_PATHS.chuck);
 
 const BONES = [
   'Hips',
@@ -230,43 +234,59 @@ export function Character({ index, legend }: CharacterProps) {
   const inspection = useHarnessStore((state) => state.inspectionView);
   const hasImportedWalk = legend === 'shaq';
   const modelPath = MODEL_PATHS[legend];
-  const [gltf, defenseAsset] = useGLTF(
-    hasImportedWalk ? [modelPath, ANIMATION_PATHS.shaq.defense] : [modelPath],
+  const [gltf, defenseAsset, jumpAsset] = useGLTF(
+    hasImportedWalk
+      ? [modelPath, ANIMATION_PATHS.shaq.defense, ANIMATION_PATHS.shaq.smallJump]
+      : [modelPath],
   );
-  const { model, rig, face, skeletons, groundFeet, legRig, hands, defenseArms, walk, defense } =
-    useMemo(() => {
-      const model = cloneSkinned(gltf.scene);
-      if (hasImportedWalk) isolateWalkingCharacter(model);
-      model.userData.modelPath = modelPath;
-      const skeletons = new Set<Skeleton>();
-      model.traverse((object) => {
-        if (object instanceof Mesh) object.frustumCulled = false;
-        if (object instanceof SkinnedMesh) skeletons.add(object.skeleton);
-      });
-      const rig = buildRig(model);
-      const hands = createHandContactPose(model, legend);
-      return {
+  const {
+    model,
+    rig,
+    face,
+    skeletons,
+    groundFeet,
+    legRig,
+    hands,
+    defenseArms,
+    walk,
+    defense,
+    jumpLayer,
+  } = useMemo(() => {
+    const model = cloneSkinned(gltf.scene);
+    if (hasImportedWalk) isolateWalkingCharacter(model);
+    model.userData.modelPath = modelPath;
+    const skeletons = new Set<Skeleton>();
+    model.traverse((object) => {
+      if (object instanceof Mesh) object.frustumCulled = false;
+      if (object instanceof SkinnedMesh) skeletons.add(object.skeleton);
+    });
+    const rig = buildRig(model);
+    const hands = createHandContactPose(model, legend);
+    return {
+      model,
+      rig,
+      face: createFaceController(model),
+      skeletons,
+      walk: hasImportedWalk ? createImportedWalk(model, gltf.animations) : null,
+      defense: defenseAsset
+        ? createImportedDefense(model, defenseAsset.scene, defenseAsset.animations)
+        : null,
+      jumpLayer: jumpAsset
+        ? createImportedJump(model, jumpAsset.scene, jumpAsset.animations)
+        : null,
+      // measured in the detached bind pose, before any posing
+      legRig: createLegRig(model, rig.bones),
+      hands,
+      defenseArms: createDefensiveArmContact(hands.arms, legend),
+      groundFeet: createFootGrounding(
         model,
-        rig,
-        face: createFaceController(model),
-        skeletons,
-        walk: hasImportedWalk ? createImportedWalk(model, gltf.animations) : null,
-        defense: defenseAsset
-          ? createImportedDefense(model, defenseAsset.scene, defenseAsset.animations)
-          : null,
-        // measured in the detached bind pose, before any posing
-        legRig: createLegRig(model, rig.bones),
-        hands,
-        defenseArms: createDefensiveArmContact(hands.arms, legend),
-        groundFeet: createFootGrounding(
-          model,
-          rig.bones.Hips,
-          rig.bones.LeftFoot,
-          rig.bones.RightFoot,
-          { skinnedContacts: hasImportedWalk },
-        ),
-      };
-    }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath, defenseAsset]);
+        rig.bones.Hips,
+        rig.bones.LeftFoot,
+        rig.bones.RightFoot,
+        { skinnedContacts: hasImportedWalk },
+      ),
+    };
+  }, [gltf.scene, gltf.animations, legend, hasImportedWalk, modelPath, defenseAsset, jumpAsset]);
   const shadowTexture = useMemo(createShadowTexture, []);
   useEffect(() => () => shadowTexture.dispose(), [shadowTexture]);
   useEffect(
@@ -284,6 +304,9 @@ export function Character({ index, legend }: CharacterProps) {
     gait: createGaitState(),
     groundReady: false,
     lastGround: new Vector3(),
+    lastAngle: 0,
+    previousFeet: [new Vector3(), new Vector3()],
+    previousPlanted: [false, false],
     revision: -1,
     moveWeight: 0,
     wPost: 0,
@@ -371,6 +394,12 @@ export function Character({ index, legend }: CharacterProps) {
     const measuredSpeed = Math.hypot(velocity.x, velocity.z);
     if (awaitingPass && measuredSpeed > config.animation.callForPass.cutSpeed) st.lastCut = t;
     const opponentDistance = opponent ? Math.hypot(opponent.x - p.x, opponent.z - p.z) : Infinity;
+    const harness = useHarnessStore.getState();
+    const preview = harness.testMode ? harness.defensivePose[index] : null;
+    const pushAge = t - (preview === 'push' ? harness.defensivePoseAt[index] : p.defensePushAt);
+    const pushingArms = pushAge >= 0 && pushAge < config.defense.hands.pushDuration;
+    const explicitHands = preview ?? (pushingArms ? 'push' : p.defenseHands);
+    const jumpActive = p.jump.phase !== 'grounded';
     const states = deriveStates({
       mode: p.mode,
       controlled,
@@ -383,6 +412,8 @@ export function Character({ index, legend }: CharacterProps) {
       opponentHasBall: duel.owner === 1 - index && duel.ballState === 'held',
       opponentDistance,
       guardRange: config.defense.guardRange,
+      defenseReleased: p.defenseReleased,
+      contactReady: explicitHands === 'brace' || explicitHands === 'push',
       sinceRequest: t - p.passRequestAt,
       sinceCut: t - st.lastCut,
       callForPass: {
@@ -409,7 +440,12 @@ export function Character({ index, legend }: CharacterProps) {
 
     // ---------- 2. gait from the body's measured travel and (smoothed) velocity ----------
     floor.current.getWorldPosition(groundPoint);
-    const grounded = p.mode !== 'dunk' && st.liftY < 0.001 && st.downS < 0.001;
+    const grounded =
+      p.jump.grounded &&
+      p.jump.phase !== 'airborne' &&
+      p.mode !== 'dunk' &&
+      st.liftY < 0.001 &&
+      st.downS < 0.001;
     const travelX = groundPoint.x - st.lastGround.x,
       travelZ = groundPoint.z - st.lastGround.z;
     const reset =
@@ -500,10 +536,21 @@ export function Character({ index, legend }: CharacterProps) {
     const mv = st.moveWeight * clamp(gait.speed / config.player[legend].speed, 0, 1);
     const along = gait.speed > 1e-3 ? gait.forwardSpeed / gait.speed : 0; // +1 fwd, −1 back
 
+    const turning =
+      !reset &&
+      Math.abs(Math.atan2(Math.sin(p.angle - st.lastAngle), Math.cos(p.angle - st.lastAngle))) >
+        0.003;
+    st.lastAngle = p.angle;
+    jumpLayer?.step(
+      frameDt,
+      p.jump,
+      p.mode !== 'down' && p.mode !== 'stun' && p.mode !== 'dunk',
+      reset && !jumpActive,
+    );
     defense?.step(
       frameDt,
       p.mode === 'post' && !controlled,
-      grounded &&
+      (grounded || jumpActive) &&
         !controlled &&
         !receiving &&
         !awaitingPass &&
@@ -511,14 +558,17 @@ export function Character({ index, legend }: CharacterProps) {
         p.charge === 0 &&
         p.jab === 0 &&
         p.bite === 0,
-      gait.moving,
-      reset,
+      jumpActive || gait.moving || turning || gait.feet.some((foot) => foot.swinging),
+      reset && !jumpActive,
+      explicitHands !== 'none' && explicitHands !== 'ready',
+      jumpActive || gait.moving || turning,
     );
     defense?.resetPose();
     walk?.step(
       frameDt,
       travelX * fx + travelZ * fz,
       grounded &&
+        !jumpActive &&
         gait.moving &&
         gait.locomotion === 'forward' &&
         states.posture === 'upright' &&
@@ -528,6 +578,7 @@ export function Character({ index, legend }: CharacterProps) {
         p.bite === 0 &&
         !pushing,
       reset ||
+        jumpActive ||
         !grounded ||
         p.mode !== 'idle' ||
         states.posture !== 'upright' ||
@@ -773,24 +824,40 @@ export function Character({ index, legend }: CharacterProps) {
         target.rDown = 0.9;
       }
     }
-    const harness = useHarnessStore.getState();
-    const preview = harness.testMode ? harness.defensivePose[index] : null;
-    const pushAge = t - (preview === 'push' ? harness.defensivePoseAt[index] : p.defensePushAt);
-    const pushingArms = pushAge >= 0 && pushAge < config.defense.hands.pushDuration;
     const defensiveHands =
       preview ??
       (pushingArms
         ? 'push'
         : p.defenseHands !== 'none'
           ? p.defenseHands
-          : states.upper === 'guard' || states.upper === 'deny'
+          : (p.mode === 'post' && !controlled && !awaitingPass) ||
+              states.upper === 'guard' ||
+              states.upper === 'deny'
             ? 'ready'
             : 'none');
-    const defensiveArmsEnabled = !controlled && !receiving && grounded && p.mode !== 'stun';
+    if (jumpActive && !jumpLayer) {
+      target.rPitch = -2.9;
+      target.rDown = 1.25;
+      target.rElbow = 0.15;
+      target.lPitch = -0.4;
+      target.lElbow = 0.7;
+      if (!grounded) {
+        target.lKnee = 0.25;
+        target.rKnee = 0.35;
+      }
+    }
+    const defensiveArmsEnabled =
+      !jumpActive && !controlled && !receiving && grounded && p.mode !== 'stun';
     if (defensiveArmsEnabled) {
       applyDefensiveArmPose(target, defensiveHands, t, pushAge / config.defense.hands.pushDuration);
       if (defensiveHands === 'brace' || defensiveHands === 'push')
-        target.lean = Math.max(target.lean, 0.24);
+        target.lean = Math.max(
+          target.lean,
+          config.defense.hands.braceLean +
+            (defensiveHands === 'push'
+              ? defensivePushPose(pushAge / config.defense.hands.pushDuration).extension * 0.08
+              : 0),
+        );
     }
 
     // posture lean: low defensive stance; bracing leans into the blocker
@@ -933,7 +1000,13 @@ export function Character({ index, legend }: CharacterProps) {
         sc.footWorld.copy(_qy.setFromAxisAngle(_up, foot.yaw)).multiply(leg.restFootQuat);
         leg.solve(foot.target, sc.pole, sc.footWorld);
       }
-    } else if (groundFeet && p.mode !== 'dunk' && st.liftY < 0.001 && st.downS < 0.001) {
+    } else if (
+      grounded &&
+      groundFeet &&
+      p.mode !== 'dunk' &&
+      st.liftY < 0.001 &&
+      st.downS < 0.001
+    ) {
       // fallback for rigs without a measurable leg chain
       groundFeet(groundPoint.y);
     }
@@ -952,7 +1025,12 @@ export function Character({ index, legend }: CharacterProps) {
       model.updateWorldMatrix(true, true);
       // Ground the blended FK pose without applying root motion to physics.
       // During movement the lower layer fades back to the existing foot IK.
-      if (defense.debug.appliedLower > 0) groundFeet?.(groundPoint.y);
+      if (grounded && defense.debug.appliedLower > 0) groundFeet?.(groundPoint.y);
+    }
+    if (jumpLayer && jumpLayer.debug.weight > 0) {
+      jumpLayer.apply(controlled || receiving);
+      model.updateWorldMatrix(true, true);
+      if (grounded) groundFeet?.(groundPoint.y);
     }
     locomotionDebug[index] = {
       locomotion: gait.locomotion,
@@ -970,25 +1048,46 @@ export function Character({ index, legend }: CharacterProps) {
       reachDrop,
       stride,
       grounded: grounded && st.groundReady,
+      ...(movementRequests[index]
+        ? {
+            movement: { ...movementRequests[index]!, measuredVelocity: { x: st.velX, z: st.velZ } },
+          }
+        : {}),
       ...(walk ? { importedWalk: { ...walk.debug } } : {}),
       ...(defense ? { importedDefense: { ...defense.debug } } : {}),
-      feet: gait.feet.map((f, i) => ({
-        planted: !f.swinging,
-        target: { x: f.target.x, y: f.target.y, z: f.target.z },
-        neutral: {
-          x: scratch.neutral[i].x,
-          y: scratch.neutral[i].y,
-          z: scratch.neutral[i].z,
-        },
-        lift: f.lift,
-        yaw: f.yaw,
-      })),
+      ...(jumpLayer ? { importedJump: { ...jumpLayer.debug } } : {}),
+      feet: gait.feet.map((f, i) => {
+        const actual =
+          legRig?.legs[i].foot.getWorldPosition(scratch.ankle) ?? scratch.ankle.copy(f.target);
+        const slidingSpeed =
+          !reset && !f.swinging && st.previousPlanted[i]
+            ? Math.hypot(actual.x - st.previousFeet[i].x, actual.z - st.previousFeet[i].z) /
+              Math.max(frameDt, 1e-3)
+            : 0;
+        st.previousFeet[i].copy(actual);
+        st.previousPlanted[i] = !f.swinging;
+        return {
+          planted: !f.swinging,
+          target: { x: f.target.x, y: f.target.y, z: f.target.z },
+          neutral: {
+            x: scratch.neutral[i].x,
+            y: scratch.neutral[i].y,
+            z: scratch.neutral[i].z,
+          },
+          lift: f.lift,
+          yaw: f.yaw,
+          actual: { ...actual },
+          targetError: actual.distanceTo(f.target),
+          supportHeight: actual.y - (legRig?.legs[i].ankleHeight ?? 0) - groundPoint.y,
+          slidingSpeed,
+        };
+      }),
     };
     if (blob.current) {
-      const sc = (1.15 + st.downS * 0.9) / (1 + st.liftY * 0.6);
+      const sc = (1.15 + st.downS * 0.9) / (1 + (st.liftY + p.jump.height) * 0.6);
       blob.current.scale.set(sc, sc * (1 + st.downS), 1);
       blob.current.rotation.z = -p.angle;
-      blob.current.position.set(st.offX, 0.012, st.offZ);
+      blob.current.position.set(st.offX, 0.012 - p.jump.height, st.offZ);
     }
 
     // ---------- 6. hands: the ball controller owns the target (Slice 2) ----------
@@ -1028,13 +1127,76 @@ export function Character({ index, legend }: CharacterProps) {
       defensiveHands,
       groundPoint,
       p.angle,
-      opponent,
+      opponent ? { ...opponent, y: bodies.players[1 - index]?.translation().y } : null,
       Math.min(rawDt, 0.25),
       defensiveArmsEnabled &&
-        !(importedDefenseActive && (defensiveHands === 'none' || defensiveHands === 'ready')),
+        defense?.debug.phase !== 'exit' &&
+        !(importedDefenseActive && !defense.debug.armsOwned),
       pushAge / config.defense.hands.pushDuration,
       t,
     );
+    const blockTarget =
+      jumpActive &&
+      !!opponent &&
+      !controlled &&
+      !receiving &&
+      (opponent.charge > 0 ||
+        opponent.mode === 'shoot' ||
+        (duel.ballState === 'shot' && duel.flight.shooter === 1 - index));
+    if (blockTarget && p.jump.phase === 'airborne') {
+      const solver = defenseArms.solvers[1];
+      solver.solve(
+        ballPoint,
+        scratch.ankle.set(fx, 0, fz),
+        _up,
+        scratch.pole.set(-lx, 0.2, -lz),
+        0.75,
+        { minFlex: 5, maxFlex: 130, maxTwist: 80, maxWrist: 45 },
+        frameDt,
+      );
+    }
+    model.updateWorldMatrix(true, true);
+    p.jump.handToBallDistance = blockTarget
+      ? hands.arms[1].socket.getWorldPosition(scratch.ankle).distanceTo(ballPoint)
+      : null;
+    p.jump.contactObserved =
+      blockTarget &&
+      p.jump.phase === 'airborne' &&
+      p.jump.handToBallDistance !== null &&
+      p.jump.handToBallDistance <= config.ball.radius + 0.05;
+    p.jump.blockResult = !blockTarget
+      ? 'no-target'
+      : p.jump.contactObserved
+        ? 'contact-preview'
+        : 'out-of-reach';
+    p.jump.context = blockTarget
+      ? 'block-preview'
+      : duel.ballState === 'loose' &&
+          Math.hypot(duel.ball.x - hoop.rimWorld.x, duel.ball.z - hoop.rimWorld.z) <
+            config.shots.dunkRange
+        ? 'rebound-ready'
+        : 'vertical';
+    if (locomotionDebug[index])
+      locomotionDebug[index]!.contact = {
+        ...defenseArms.debug,
+        target: { ...defenseArms.debug.target },
+        forearm: { ...defenseArms.debug.forearm },
+      };
+    forearmContacts[index] = {
+      time: t,
+      actor: { x: p.x, z: p.z },
+      opponent: opponent ? { x: opponent.x, z: opponent.z } : null,
+      mode: defensiveHands,
+      valid: defensiveArmsEnabled && defenseArms.debug.contactValid,
+      targetDistance: defenseArms.debug.targetDistance,
+    };
+    if (
+      import.meta.env.DEV &&
+      defensiveHands === 'push' &&
+      defenseArms.active &&
+      pushEvidence[index]
+    )
+      pushEvidence[index]!.animationPerformed = true;
     model.updateWorldMatrix(true, true);
     // Compatibility diagnostic, never used as an attachment target by the ball controller.
     const gripPoint = controlled ? ballPoint : catchPoint;
@@ -1092,24 +1254,42 @@ export function Character({ index, legend }: CharacterProps) {
           layers: {
             base: 'procedural-fk',
             legs:
-              defense && defense.debug.appliedLower > 0
-                ? `imported-defense:${defense.debug.clip}`
-                : walk && walk.debug.weight > 0
-                  ? `imported-walk:${walk.debug.clip}`
-                  : 'procedural-gait',
-            feet: 'foot-grounding',
-            torso: importedDefenseActive
-              ? `imported-defense:${defense.debug.clip}`
-              : 'procedural-posture',
+              jumpLayer && jumpLayer.debug.weight > 0
+                ? `imported-jump:${jumpLayer.debug.clip}`
+                : jumpActive
+                  ? 'procedural-small-jump'
+                  : defense && defense.debug.appliedLower > 0
+                    ? `imported-defense:${defense.debug.clip}`
+                    : walk && walk.debug.weight > 0
+                      ? `imported-walk:${walk.debug.clip}`
+                      : 'procedural-gait',
+            feet: grounded ? 'foot-grounding' : 'airborne-pose',
+            torso:
+              jumpLayer && jumpLayer.debug.appliedUpper > 0
+                ? `imported-jump:${jumpLayer.debug.clip}`
+                : importedDefenseActive
+                  ? `imported-defense:${defense.debug.clip}`
+                  : 'procedural-posture',
             arms:
               defensiveArmsEnabled && defenseArms.active
                 ? 'defensive-arm-ik'
                 : controlled || incoming
                   ? 'ball-hand-ik'
-                  : importedDefenseActive
-                    ? `imported-defense:${defense.debug.clip}`
-                    : 'procedural-fk',
-            head: importedDefenseActive ? 'imported-defense' : 'procedural-look',
+                  : blockTarget && p.jump.phase === 'airborne'
+                    ? 'jump-block-ik'
+                    : jumpLayer && jumpLayer.debug.weight > 0
+                      ? `imported-jump:${jumpLayer.debug.clip}`
+                      : jumpActive
+                        ? 'procedural-small-jump'
+                        : importedDefenseActive
+                          ? `imported-defense:${defense.debug.clip}`
+                          : 'procedural-fk',
+            head:
+              jumpLayer && jumpLayer.debug.appliedUpper > 0
+                ? 'imported-jump'
+                : importedDefenseActive
+                  ? 'imported-defense'
+                  : 'procedural-look',
           },
         },
         rig.bones,

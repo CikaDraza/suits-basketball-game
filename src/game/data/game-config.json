@@ -398,17 +398,32 @@
     "accelTime": 0.4,
     "brakeTime": 0.28
   },
+  "smallJump": {
+    "preparation": 0.24,
+    "launchSpeed": 3.5,
+    "recovery": 0.24,
+    "groundedTolerance": 0.025,
+    "visualFlightDuration": 0.38,
+    "blendDuration": 0.14
+  },
   "defense": {
     "hands": {
       "waveRate": 2.5,
       "waveAmplitude": 0.3,
       "doubleFlickWindow": 0.35,
-      "pushDuration": 0.42,
-      "pushContactTime": 0.14,
+      "pushDuration": 0.72,
+      "pushPreparation": 0.2,
+      "pushExtension": 0.2,
+      "pushReach": 0.12,
+      "pushContactTime": 0.34,
+      "pushContactEnd": 0.55,
       "pushCooldown": 0.75,
       "pushRange": 1.3,
       "pushMinFacing": 0.6,
-      "pushSpeed": 4.5
+      "pushSpeed": 1.8,
+      "forearmContactTolerance": 0.13,
+      "braceTorsoHeight": 0.86,
+      "braceLean": 0.5
     },
     "guardRange": 3.2,
     "denyBallBias": 0.6,

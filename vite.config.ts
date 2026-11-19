@@ -56,6 +56,7 @@ function diagnosticBuild() {
         'public/models/shaquille_oneal.glb',
         'public/models/charles_barkley.glb',
         `public/${ANIMATION_PATHS.shaq.defense}`,
+        `public/${ANIMATION_PATHS.shaq.smallJump}`,
       ].map((path) => [path, digest(path)]),
     ),
   };

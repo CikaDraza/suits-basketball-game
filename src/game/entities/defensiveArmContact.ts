@@ -4,6 +4,9 @@ import type { DefensiveArmMode } from '../input/defensiveHands';
 import type { createArmContact } from './armContact';
 import { createDefensiveArmIK, type DefensiveArmLimits } from './defensiveArmIK';
 import { palmFrame } from './palmSockets';
+import { contactArm } from './locomotion';
+import { defensivePushPose } from './defensivePushPose';
+import { clamp } from '../utils/math';
 
 const LIMITS: Record<'extension' | 'guard' | 'contact', DefensiveArmLimits> = {
   extension: { minFlex: 5, maxFlex: 145, maxTwist: 80, maxWrist: 45 },
@@ -76,16 +79,39 @@ export function createDefensiveArmContact(
     shoulderRotation = new Quaternion();
   const transform = (local: Vector3, world: Vector3) => world.copy(local).applyQuaternion(yaw);
   let mode: DefensiveArmMode = 'none';
+  let contactSide: -1 | 1 = 1;
+  const contactPoint = new Vector3(),
+    forearm = new Vector3(),
+    segment = new Vector3(),
+    toward = new Vector3();
+  const debug = {
+    selectedArm: 'left' as 'left' | 'right' | 'both',
+    virtual: true,
+    target: new Vector3(),
+    forearm: new Vector3(),
+    targetDistance: null as number | null,
+    contactValid: false,
+    opponentDistance: Infinity,
+    phase: 'none' as string,
+  };
   return {
     solvers,
+    debug,
     get active() {
       return memory.some((m) => m.weight > 0.001);
     },
     update(
       hands: DefensiveArmMode,
-      _floor: Vector3,
+      floor: Vector3,
       angle: number,
-      opponent: { x: number; z: number; legend: Legend } | null,
+      opponent: {
+        x: number;
+        z: number;
+        legend: Legend;
+        angle?: number;
+        y?: number;
+        mode?: string;
+      } | null,
       dt: number,
       enabled: boolean,
       pushProgress = 0,
@@ -95,6 +121,50 @@ export function createDefensiveArmContact(
       yaw.setFromAxisAngle(up, angle);
       left.set(Math.cos(angle), 0, -Math.sin(angle));
       forward.set(Math.sin(angle), 0, Math.cos(angle));
+      const push = defensivePushPose(pushProgress);
+      if (opponent)
+        contactSide = contactArm(
+          (opponent.x - floor.x) * left.x + (opponent.z - floor.z) * left.z,
+          contactSide,
+          config.animation.contactSideDeadzone,
+        );
+      debug.selectedArm = mode === 'push' ? 'both' : contactSide > 0 ? 'left' : 'right';
+      debug.virtual = !opponent;
+      debug.contactValid = false;
+      debug.targetDistance = null;
+      debug.opponentDistance = opponent
+        ? Math.hypot(opponent.x - floor.x, opponent.z - floor.z)
+        : Infinity;
+      debug.phase = mode === 'push' ? push.phase : mode;
+      if (opponent) {
+        // Closest surface of an oriented torso envelope, in the opponent's actual transform.
+        solvers[contactSide > 0 ? 0 : 1].arm.upper.getWorldPosition(shoulder);
+        toward.set(shoulder.x - opponent.x, 0, shoulder.z - opponent.z).normalize();
+        const yaw = opponent.angle ?? 0;
+        const side = toward.x * Math.cos(yaw) - toward.z * Math.sin(yaw);
+        const ahead = toward.x * Math.sin(yaw) + toward.z * Math.cos(yaw);
+        const radius = config.physics.radius / Math.sqrt((side / 0.95) ** 2 + (ahead / 0.8) ** 2);
+        contactPoint
+          .set(
+            opponent.x,
+            (opponent.y ?? config.physics.halfHeight + config.physics.radius) -
+              config.physics.halfHeight -
+              config.physics.radius +
+              config.ballControl[opponent.legend].holdHeight *
+                config.defense.hands.braceTorsoHeight -
+              (opponent.mode === 'post' ? config.ballControl[opponent.legend].postDrop : 0),
+            opponent.z,
+          )
+          .addScaledVector(toward, radius);
+      } else {
+        // A local training target has no physical opponent/contact.
+        contactPoint
+          .copy(floor)
+          .addScaledVector(forward, config.physics.radius + solvers[0].foreLength * 0.7);
+        solvers[0].arm.upper.getWorldPosition(shoulder);
+        contactPoint.y = shoulder.y - solvers[0].upperLength;
+      }
+      debug.target.copy(contactPoint);
       const blend = 1 - Math.exp(-18 * dt);
       for (const [i, solver] of solvers.entries()) {
         const m = memory[i],
@@ -116,9 +186,13 @@ export function createDefensiveArmContact(
           solver.debug.weight = 0;
           continue;
         }
-        const lateral = mode === 'wide' || mode === (i === 0 ? 'left' : 'right');
+        const selected = (i === 0 ? 1 : -1) === contactSide;
+        const lateral =
+          mode === 'wide' ||
+          mode === (i === 0 ? 'left' : 'right') ||
+          (mode === 'brace' && !selected);
         const overhead = mode === 'up' || mode === 'wave';
-        const contact = mode === 'brace' || mode === 'push';
+        const contact = (mode === 'brace' && selected) || mode === 'push';
         const kind = lateral || overhead ? 'extension' : contact ? 'contact' : 'guard';
         let flex = 95,
           elevation = 0.04;
@@ -144,36 +218,56 @@ export function createDefensiveArmContact(
             fingers.set(0, 1, 0);
             pole.set(sign, 0, 0.1);
           } else if (contact) {
-            // Forearms rise toward contact; distances scale with the actual arm, not character height.
-            const extension =
-              mode === 'push' ? Math.sin(Math.PI * Math.max(0, Math.min(1, pushProgress))) ** 2 : 0;
             solver.arm.upper.getWorldPosition(shoulder);
-            const ahead =
-              ((opponent?.x ?? shoulder.x) - shoulder.x) * forward.x +
-              ((opponent?.z ?? shoulder.z) - shoulder.z) * forward.z;
-            const side =
-              ((opponent?.x ?? shoulder.x) - shoulder.x) * left.x +
-              ((opponent?.z ?? shoulder.z) - shoulder.z) * left.z;
-            const close =
-              opponent !== null &&
-              ahead > 0 &&
-              Math.hypot(opponent.x - shoulder.x, opponent.z - shoulder.z) <=
-                config.defense.hands.pushRange;
+            const extension = mode === 'push' ? push.extension : 0;
+            // Start from an approximately vertical upper arm and horizontal forearm.
+            // Aim at the measured lower torso, with bounded reach and elbow flexion.
+            const side = clamp(
+              (contactPoint.x - shoulder.x) * left.x + (contactPoint.z - shoulder.z) * left.z,
+              -solver.foreLength * 0.35,
+              solver.foreLength * 0.35,
+            );
+            const ahead = clamp(
+              (contactPoint.x - shoulder.x) * forward.x +
+                (contactPoint.z - shoulder.z) * forward.z +
+                solver.foreLength * 0.25,
+              solver.foreLength * 0.85,
+              solver.foreLength,
+            );
+            const down = clamp(
+              contactPoint.y - shoulder.y,
+              -solver.upperLength * 1.1,
+              -solver.upperLength * 0.8,
+            );
             direction
-              .set(
-                -sign * 0.25 + (close ? Math.max(-0.15, Math.min(0.15, side * 0.15)) : 0),
-                0.4,
-                0.9,
-              )
+              .set(side, down, ahead + extension * config.defense.hands.pushReach)
               .normalize();
-            flex = 72 - extension * 36;
-            elevation = 0.08;
-            normal.set(-sign * 0.7, 0, 1).normalize();
-            fingers.set(0, 1, 0);
-            pole.set(sign * 0.18, -1, -0.15);
+            const distance = Math.hypot(
+              side,
+              down,
+              ahead + extension * config.defense.hands.pushReach,
+            );
+            flex = clamp(
+              (Math.acos(
+                clamp(
+                  (distance ** 2 - solver.upperLength ** 2 - solver.foreLength ** 2) /
+                    (2 * solver.upperLength * solver.foreLength),
+                  -1,
+                  1,
+                ),
+              ) *
+                180) /
+                Math.PI,
+              45,
+              105,
+            );
+            elevation = 0.02 + extension * 0.05;
+            normal.set(-sign, 0, 0);
+            fingers.set(0, 0, 1);
+            pole.set(sign * 0.35, -1, -0.15);
           } else {
-            // The other arm stays in an upright, inward-facing basketball guard.
-            direction.set(-sign * 0.05, -0.2, 0.7).normalize();
+            // Open shoulders, hands below the chest; a small asymmetry avoids a rigid guard.
+            direction.set(sign * 0.3, -0.48 - i * 0.04, 0.7).normalize();
             normal.set(-sign, 0, 0.2).normalize();
             fingers.set(0, 0.6, 0.8);
             pole.set(sign * 0.25, -1, -0.1);
@@ -210,7 +304,37 @@ export function createDefensiveArmContact(
         handWorld.copy(frame).multiply(m.socketInverse);
         target.add(direction.copy(solver.arm.socket.position).applyQuaternion(handWorld));
         transform(m.pole, worldPole);
-        solver.solve(target, worldNormal, worldFingers, worldPole, m.weight, LIMITS[kind], dt);
+        solver.solve(
+          target,
+          worldNormal,
+          worldFingers,
+          worldPole,
+          m.weight,
+          LIMITS[kind],
+          dt,
+          contact,
+        );
+        if (contact && active) {
+          // Closest actual forearm point to the torso target, rather than wrist pose labels.
+          segment.copy(solver.debug.wrist).sub(solver.debug.elbow);
+          const fraction = clamp(
+            toward.copy(contactPoint).sub(solver.debug.elbow).dot(segment) /
+              Math.max(segment.lengthSq(), 1e-8),
+            0,
+            1,
+          );
+          forearm.copy(solver.debug.elbow).addScaledVector(segment, fraction);
+          const distance = forearm.distanceTo(contactPoint);
+          if (debug.targetDistance === null || distance < debug.targetDistance) {
+            debug.targetDistance = distance;
+            debug.forearm.copy(forearm);
+          }
+          debug.contactValid ||=
+            !!opponent &&
+            debug.opponentDistance <= config.defense.hands.pushRange &&
+            distance <= config.defense.hands.forearmContactTolerance &&
+            m.weight > 0.8;
+        }
       }
     },
   };

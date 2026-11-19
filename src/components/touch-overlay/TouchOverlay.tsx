@@ -24,12 +24,14 @@ const slotNames: Record<TouchSlot, string> = {
   triangle: 'Triangle',
   circle: 'Circle',
   cross: 'Cross',
+  jump: 'Jump',
 };
 const positions = {
   square: styles.left,
   triangle: styles.top,
   circle: styles.right,
   cross: styles.bottom,
+  jump: { left: '-70%', top: '50%', transform: 'translateY(-50%)' },
 };
 function MappedButton({
   slot,
