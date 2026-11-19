@@ -95,6 +95,12 @@ export function matchesGameplayPose(
   const ballArms = pose.layers.arms === 'ball-hand-ik';
   const ownsBall = state.owner === command.slot && state.ballState === 'held';
   if (command.action === 'move') return !!pose.locomotion?.moving;
+  if (command.action === 'jump')
+    return (
+      player.jump.airborneObserved &&
+      ((pose.locomotion?.importedJump?.applied ?? 0) > 0 ||
+        pose.layers.legs === 'procedural-small-jump')
+    );
   if (command.action === 'stance_or_special') return pose.mode === command.execution.data.mode;
   if (command.action.startsWith('defense_'))
     return pose.layers.arms === 'defensive-arm-ik' && command.action === `defense_${pose.defense}`;

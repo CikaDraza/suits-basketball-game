@@ -4,6 +4,8 @@ import { motionAudit } from '../diagnostics/motionAudit';
 import { useGameStore } from '../state/gameStore';
 import type { RightStickSnapshot } from '../input/rightStickDebug';
 import { GameplayCommandList } from './GameplayCommandList';
+import type { PushEvidence } from '../simulation/defensivePush';
+import type { SmallJump } from '../simulation/smallJump';
 
 const vector = (v?: { x: number; z: number }) => (v ? `${v.x.toFixed(2)}, ${v.z.toFixed(2)}` : '—');
 const read = (slot: number) => ({
@@ -52,6 +54,8 @@ export function MotionAuditPanel({
     players: {
       velocity: { x: number; z: number } | null;
       controlledVelocity: { x: number; z: number };
+      push: PushEvidence | null;
+      jump: SmallJump;
     }[];
     ball: {
       active: boolean;
@@ -219,6 +223,12 @@ export function MotionAuditPanel({
             </dd>
             <dt>Arms owner</dt>
             <dd>{view.animation?.layers.arms ?? '—'}</dd>
+            <dt>Imported arms interrupted</dt>
+            <dd>
+              {defense
+                ? `${defense.overheadInterrupted ? 'yes' : 'no'} · ${defense.armOwner} · release ${defense.armReleaseWeight.toFixed(2)}`
+                : 'no imported arm layer'}
+            </dd>
             <dt>Legs / feet</dt>
             <dd>
               {view.animation?.layers.legs ?? '—'} / {view.animation?.layers.feet ?? '—'}
@@ -241,6 +251,23 @@ export function MotionAuditPanel({
             </dd>
             <dt>Measured body speed</dt>
             <dd>{locomotion ? `${locomotion.speed.toFixed(2)} m/s` : '—'}</dd>
+            <dt>Requested / actual yaw</dt>
+            <dd>
+              {locomotion?.movement
+                ? `${locomotion.movement.requestedYaw.toFixed(3)} / ${locomotion.movement.actualYaw.toFixed(3)} rad`
+                : '—'}
+            </dd>
+            <dt>Opponent relative X/Z</dt>
+            <dd>{vector(locomotion?.movement?.opponentRelative ?? undefined)}</dd>
+            <dt>Measured foot sliding / support height</dt>
+            <dd>
+              {locomotion?.feet
+                .map(
+                  (foot) =>
+                    `${foot.slidingSpeed.toFixed(3)} m/s · ${foot.supportHeight.toFixed(3)} m`,
+                )
+                .join(' / ') ?? '—'}
+            </dd>
             <dt>Grounded / feet planted</dt>
             <dd>
               {locomotion
@@ -270,7 +297,62 @@ export function MotionAuditPanel({
             Measured thresholds only; anatomy and visual quality still require review. Joint
             positions, quaternions, elbows and palm errors are included in JSON.
           </p>
+          <h3>FOREARM CONTACT</h3>
+          <dl>
+            <dt>Arm / phase / target</dt>
+            <dd>
+              {locomotion?.contact
+                ? `${locomotion.contact.selectedArm} / ${locomotion.contact.phase} / ${locomotion.contact.virtual ? 'virtual' : 'opponent'}`
+                : '—'}
+            </dd>
+            <dt>Torso target / actual forearm</dt>
+            <dd>
+              {locomotion?.contact
+                ? `${JSON.stringify(locomotion.contact.target)} / ${JSON.stringify(locomotion.contact.forearm)}`
+                : '—'}
+            </dd>
+            <dt>Measured gap / contact valid</dt>
+            <dd>
+              {locomotion?.contact
+                ? `${locomotion.contact.targetDistance?.toFixed(3) ?? 'unmeasured'} m / ${locomotion.contact.contactValid ? 'yes' : 'no'}`
+                : '—'}
+            </dd>
+            <dt>Push accepted / animated / in range</dt>
+            <dd>
+              {physics?.players[slot]?.push
+                ? `${physics.players[slot].push!.gestureAccepted} / ${physics.players[slot].push!.animationPerformed} / ${physics.players[slot].push!.withinRange}`
+                : 'none'}
+            </dd>
+            <dt>Contact / impulse / measured displacement</dt>
+            <dd>
+              {physics?.players[slot]?.push
+                ? `${physics.players[slot].push!.contactEstablished} / ${physics.players[slot].push!.impulseApplied} / ${physics.players[slot].push!.displacement.toFixed(3)} m`
+                : 'none'}
+            </dd>
+          </dl>
           <h3>BALL</h3>
+          <dl>
+            <dt>Jump decision / support / phase</dt>
+            <dd>
+              {physics?.players[slot]?.jump
+                ? `${physics.players[slot].jump.decision} ${physics.players[slot].jump.reason} / ${physics.players[slot].jump.grounded} / ${physics.players[slot].jump.phase}`
+                : '—'}
+            </dd>
+            <dt>Vertical velocity / height / takeoffs</dt>
+            <dd>
+              {physics?.players[slot]?.jump
+                ? `${physics.players[slot].jump.verticalVelocity.toFixed(3)} m/s / ${physics.players[slot].jump.height.toFixed(3)} m / ${physics.players[slot].jump.takeoffs}`
+                : '—'}
+            </dd>
+            <dt>Jump clip / actual hand-ball distance / result</dt>
+            <dd>
+              {locomotion?.importedJump?.weight
+                ? locomotion.importedJump.clip
+                : 'procedural / inactive'}{' '}
+              / {physics?.players[slot]?.jump.handToBallDistance?.toFixed(3) ?? 'no target'} /{' '}
+              {physics?.players[slot]?.jump.blockResult ?? 'no target'} (preview)
+            </dd>
+          </dl>
           <dl>
             <dt>Active / state</dt>
             <dd>

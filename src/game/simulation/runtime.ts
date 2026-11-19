@@ -1,5 +1,6 @@
 import { config, level, type Legend } from '../data/gameConfig';
 import { createBallHandlingState } from './ballHandling';
+import { createSmallJump } from './smallJump';
 import {
   INITIAL_MESSAGE,
   type BallFlight,
@@ -24,6 +25,7 @@ function createFighter(slot: number, legend: Legend): Fighter {
     vz: 0,
     hand: 1,
     defenseHands: 'none',
+    defenseReleased: false,
     defensePushAt: -10,
     defensePushApplied: false,
     defensePushCooldown: -1,
@@ -31,6 +33,8 @@ function createFighter(slot: number, legend: Legend): Fighter {
     lastR: -10,
     taps: 0,
     prevQ: false,
+    prevJump: false,
+    jump: createSmallJump(),
     prevR: false,
     prevInbound: false,
     interceptUntil: -1,

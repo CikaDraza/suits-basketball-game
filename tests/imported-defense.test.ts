@@ -76,6 +76,23 @@ test('real defense clip blends from the visible pose, holds once, yields to gait
     }
     assert.equal(defense.debug.appliedLower, 0, 'moving legs remain owned by gait/IK');
     assert.ok(leg.quaternion.angleTo(previousWalk) < 1e-6);
+    defense.step(1 / rate, true, true, false, false);
+    assert.equal(
+      defense.debug.feetOwned,
+      true,
+      'stopping does not restore stale authored foot anchors',
+    );
+    defense.step(1 / rate, true, true, true, false, true);
+    for (let frame = 0; frame < rate; frame++) {
+      defense.step(1 / rate, true, true, true, false, false);
+      defense.resetPose();
+      arm.quaternion.copy(previousWalk); // final controller base, with RS now neutral
+      defense.apply();
+    }
+    assert.equal(defense.debug.armsOwned, true);
+    assert.equal(defense.debug.armOwner, 'defensive-arm-ik');
+    assert.equal(defense.debug.overheadInterrupted, true);
+    assert.ok(arm.quaternion.angleTo(previousWalk) < 1e-6, 'neutral must never restore overhead');
     const beforeExit = arm.quaternion.clone();
     defense.step(0, false, true, true, false);
     defense.resetPose();
@@ -100,6 +117,7 @@ test('real defense clip blends from the visible pose, holds once, yields to gait
     assert.ok(arm.quaternion.angleTo(previousWalk) < 1e-6);
     defense.step(0, true, true, false, true);
     assert.equal(defense.debug.time, 0, 'reset never resumes a stale part of the sequence');
+    assert.equal(defense.debug.armsOwned, false, 'new stance entry restores the full clip');
   }
   for (const pose of endPoses.slice(1)) assert.deepEqual(pose, endPoses[0]);
 });

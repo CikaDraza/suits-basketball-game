@@ -25,6 +25,39 @@ const tuning: GaitTuning = {
 const ANKLE = 0.09,
   HALF_HIP = 0.12;
 
+test('planted feet follow capsule settling vertically without horizontal sliding or replanting', () => {
+  const gait = createGaitState();
+  const neutral: [Vector3, Vector3] = [
+    new Vector3(0.12, ANKLE + 0.03, 0),
+    new Vector3(-0.12, ANKLE + 0.03, 0),
+  ];
+  const input = {
+    dt: 1 / 60,
+    travelX: 0,
+    travelZ: 0,
+    velocityX: 0,
+    velocityZ: 0,
+    angle: 0,
+    neutral,
+    step: { stride: 0.4, lift: 0.1 },
+    reset: true,
+    bodyX: 0,
+    bodyZ: 0,
+  };
+  stepGait(gait, input, tuning);
+  neutral.forEach((v) => {
+    v.y = ANKLE - 0.001;
+  });
+  stepGait(gait, { ...input, reset: false }, tuning);
+  gait.feet.forEach((foot, i) => {
+    assert.equal(foot.target.y, ANKLE - 0.001);
+    assert.equal(foot.target.x, neutral[i].x);
+    assert.equal(foot.target.z, 0);
+    assert.equal(foot.swinging, false);
+  });
+  assert.equal(gait.steps, 0);
+});
+
 interface Run {
   speed: number;
   /** travel direction relative to facing (rad): 0 forward, π backward, π/2 strafe left */

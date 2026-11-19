@@ -147,6 +147,7 @@ export function createDefensiveArmIK(arm: ContactArm) {
       weight: number,
       limits: DefensiveArmLimits,
       dt = 1 / 60,
+      followContactPole = false,
     ) {
       upperBase.copy(upper.quaternion);
       foreBase.copy(fore.quaternion);
@@ -187,14 +188,24 @@ export function createDefensiveArmIK(arm: ContactArm) {
       debug.poleProjection = projection;
       // Keep the same bend hemisphere on both sides of the singular cone.
       // Dropping this continuity rule at the cone boundary can flip the forearm.
-      if ((hasPrevious || projection < 0.15) && bend.dot(oldBend) < 0) bend.negate();
+      if (((hasPrevious && !followContactPole) || projection < 0.15) && bend.dot(oldBend) < 0)
+        bend.negate();
       if (projection < 0.15) {
         debug.poleFallback = true;
         if (bend.lengthSq() > 1e-12) bend.normalize();
         else bend.copy(oldBend);
         const t = clamp((projection - 0.03) / 0.12, 0, 1);
         bend.lerpVectors(oldBend, bend, t * t * (3 - 2 * t)).normalize();
-      } else bend.normalize();
+      } else {
+        bend.normalize();
+        if (hasPrevious && followContactPole) {
+          // An intentional new pole (e.g. overhead → low forearm brace) must be
+          // reachable. Keeping the old hemisphere forever locks the elbow above
+          // the wrist. Rotate within the elbow plane at a bounded speed instead.
+          const turn = Math.atan2(axis.dot(cross.crossVectors(oldBend, bend)), oldBend.dot(bend));
+          bend.copy(oldBend).applyAxisAngle(axis, clamp(turn, -8 * dt, 8 * dt));
+        }
+      }
       const along = (upperLength ** 2 - foreLength ** 2 + distance ** 2) / (2 * distance);
       const height = Math.sqrt(Math.max(0, upperLength ** 2 - along ** 2));
       elbowGoal.copy(origin).addScaledVector(axis, along).addScaledVector(bend, height);
@@ -215,10 +226,12 @@ export function createDefensiveArmIK(arm: ContactArm) {
         foreDirection.dot(cross.crossVectors(neutralNormal, desiredNormal)),
         neutralNormal.dot(desiredNormal),
       );
-      if (hasPrevious)
+      if (hasPrevious && !followContactPole)
         requestedTwist +=
           Math.round((previousTwist - requestedTwist) / (2 * Math.PI)) * 2 * Math.PI;
-      const twist = clamp(requestedTwist, -limits.maxTwist * DEG, limits.maxTwist * DEG);
+      let twist = clamp(requestedTwist, -limits.maxTwist * DEG, limits.maxTwist * DEG);
+      if (hasPrevious && followContactPole)
+        twist = clamp(twist, debug.forearmTwist * DEG - 4 * dt, debug.forearmTwist * DEG + 4 * dt);
       roll.setFromAxisAngle(foreDirection, twist);
       foreWorld.premultiply(roll);
       neutralHand.copy(foreWorld).multiply(handRest);

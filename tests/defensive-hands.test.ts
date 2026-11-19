@@ -141,13 +141,13 @@ test('forearm shove reaches only a nearby opponent ahead and respects relative m
   assert.equal(defensivePushImpulse(from, { x: 0, z: 3, mass: 138 }), null);
   const rotated = defensivePushImpulse({ ...from, angle: Math.PI / 2 }, { x: 1, z: 0, mass: 150 })!;
   assert.ok(
-    rotated.x > 4 && Math.abs(rotated.z) < 1e-8,
+    Math.abs(rotated.x - config.defense.hands.pushSpeed) < 1e-8 && Math.abs(rotated.z) < 1e-8,
     'the shove follows the body forward direction at impact',
   );
 });
 
 for (const legend of ['shaq', 'chuck'] as const) {
-  test(`${legend}: lateral palms face forward and checking puts both forearms ahead of the body`, async (context) => {
+  test(`${legend}: lateral palms face forward and brace keeps one horizontal contact forearm with an opposite balance arm`, async (context) => {
     const asset = await loadCharacter(legend);
     context.after(asset.dispose);
     const hands = createHandContactPose(asset.model, legend);
@@ -158,10 +158,10 @@ for (const legend of ['shaq', 'chuck'] as const) {
         asset.reset();
         defense.update(mode, floor, 0, { x: 0, z: 1, legend }, 1 / 60, true);
       }
-      const selected = mode === 'brace' ? hands.arms : [hands.arms[mode === 'left' ? 0 : 1]];
+      const selected = [hands.arms[mode === 'right' ? 1 : 0]];
       for (const arm of selected) {
         assert.ok(
-          arm.debug.normal.z > (mode === 'brace' ? 0.75 : 0.85),
+          mode === 'brace' || arm.debug.normal.z > 0.85,
           `${mode} palm faces forward: ${arm.debug.normal.z}`,
         );
         assert.ok(arm.debug.wristBend <= 65.1);
@@ -169,11 +169,11 @@ for (const legend of ['shaq', 'chuck'] as const) {
         if (mode === 'brace') {
           const elbow = arm.fore.getWorldPosition(new Vector3());
           const wrist = arm.hand.getWorldPosition(new Vector3());
-          const shoulder = arm.upper.getWorldPosition(new Vector3());
           assert.ok(
-            elbow.z - shoulder.z > defense.solvers[0].length * 0.35 && wrist.z > 0.3,
-            `both forearms extend to the opponent: elbow ${elbow.z}, wrist ${wrist.z}`,
+            wrist.z > elbow.z && Math.abs(wrist.y - elbow.y) < defense.solvers[0].foreLength * 0.3,
+            `contact forearm is horizontal and forward: elbow ${elbow.z}, wrist ${wrist.z}`,
           );
+          assert.ok(Math.abs(hands.arms[1].debug.palm.x) > 0.6, 'opposite arm covers the side');
         }
       }
     }
@@ -206,10 +206,10 @@ test('lateral FK entry keeps the opposite arm guarding and waving moves both rai
   };
   applyDefensiveArmPose(pose, 'left', 0);
   assert.equal(pose.lDown, 0);
-  assert.ok(pose.rPitch < -0.5 && pose.rElbow > 1.2);
+  assert.ok(pose.rPitch > -0.5 && pose.rElbow > 1.2, 'opposite arm keeps the lower ready guard');
   applyDefensiveArmPose(pose, 'right', 0);
   assert.equal(pose.rDown, 0);
-  assert.ok(pose.lPitch < -0.5 && pose.lElbow > 1.2);
+  assert.ok(pose.lPitch > -0.5 && pose.lElbow > 1.2, 'opposite arm keeps the lower ready guard');
   applyDefensiveArmPose(pose, 'up', 0);
   assert.ok(pose.lPitch < -2.8 && pose.rPitch < -2.8);
   applyDefensiveArmPose(pose, 'wave', 0.1);

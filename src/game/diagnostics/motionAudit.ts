@@ -18,6 +18,7 @@ import {
 } from './rules';
 import { motionRecorder as recorder } from './recorder';
 import { gameplayCommands, matchesGameplayPose } from './gameplayCommands';
+import { pushEvidence } from '../simulation/defensivePush';
 
 type Bodies = { players: (RapierRigidBody | null)[]; ball: RapierRigidBody | null };
 type Decision = { commandId: number; action: string; stage: string; reason?: string };
@@ -65,6 +66,8 @@ function request(slot: number, action: string, data: unknown = {}) {
 function decision(slot: number, commandId: number, action: string, stage: string, reason?: string) {
   recorder.event(`command.${stage}`, {}, { slot, commandId, action, reason });
   lastDecision[slot] = { commandId, action, stage, reason };
+  if (handCommands[slot]?.commandId === commandId)
+    handCommands[slot] = { commandId, action, stage, reason };
 }
 function executed(slot: number, commandId: number, action: string, data: unknown = {}) {
   if (executedCommands.has(commandId)) return;
@@ -98,11 +101,28 @@ function snapshot(state: DuelState, bodies: Bodies) {
         : null,
       mode: p.mode,
       defenseHands: p.defenseHands,
+      jump: { ...p.jump },
       handling: p.handling,
       charge: p.charge,
       energy: p.energy,
       requestedMovement: p.moving,
       controlledVelocity: { x: p.moveVX, z: p.moveVZ },
+      push: pushEvidence[slot]
+        ? {
+            ...pushEvidence[slot],
+            displacement:
+              pushEvidence[slot]!.origin && pushEvidence[slot]!.target !== null
+                ? Math.hypot(
+                    state.players[pushEvidence[slot]!.target!].x - pushEvidence[slot]!.origin!.x,
+                    state.players[pushEvidence[slot]!.target!].z - pushEvidence[slot]!.origin!.z,
+                  )
+                : 0,
+            measuredVelocity:
+              pushEvidence[slot]!.target !== null
+                ? (bodies.players[pushEvidence[slot]!.target!]?.linvel() ?? null)
+                : null,
+          }
+        : null,
     })),
     ball: {
       active: !!bodies.ball,
@@ -407,6 +427,10 @@ export const motionAudit = {
     const command = handCommands[slot];
     if (
       command &&
+      command.stage === 'accepted' &&
+      // Push execution is confirmed by Duel after its cooldown decision. An
+      // earlier push can still own this pose before the next physics tick.
+      command.action !== 'defense_push' &&
       arms.active &&
       observation.layers.arms === 'defensive-arm-ik' &&
       `defense_${observation.defense}` === command.action

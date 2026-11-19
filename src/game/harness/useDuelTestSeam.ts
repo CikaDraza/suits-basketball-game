@@ -145,11 +145,13 @@ export function useDuelTestSeam(): void {
       getGrip: (slot) => ({ grip: { ...duel.players[slot].grip }, ball: { ...duel.ball } }),
       press: async (action, frames = 1) => {
         const key =
-          action === 'inbound' || action === 'INBOUND' || action === 'E'
-            ? 'inbound'
-            : action === 'Q' || action === 'post' || action === 'actionB'
-              ? 'actionB'
-              : 'actionA';
+          action === 'jump' || action === 'JUMP' || action === 'F'
+            ? 'jump'
+            : action === 'inbound' || action === 'INBOUND' || action === 'E'
+              ? 'inbound'
+              : action === 'Q' || action === 'post' || action === 'actionB'
+                ? 'actionB'
+                : 'actionA';
         useInputStore.getState().setAction(key, true);
         try {
           await wait(frames);

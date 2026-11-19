@@ -5,6 +5,7 @@ export const CONTROL_ACTIONS = [
   'MOVE_DOWN',
   'ACTION_A',
   'ACTION_B',
+  'JUMP',
   'INBOUND',
   'HAND_LEFT',
   'HAND_RIGHT',
@@ -19,7 +20,7 @@ export type ControlContext = 'offense' | 'defense';
 export type InputDevice = 'keyboard' | 'gamepad' | 'mobile';
 export type PadBinding =
   { kind: 'button'; index: number } | { kind: 'axis'; index: number; sign: 1 | -1 };
-export const TOUCH_SLOTS = ['square', 'triangle', 'circle', 'cross'] as const;
+export const TOUCH_SLOTS = ['square', 'triangle', 'circle', 'cross', 'jump'] as const;
 export type TouchSlot = (typeof TOUCH_SLOTS)[number];
 export interface ContextBindings {
   keyboard: Record<ControlAction, string[]>;
@@ -41,6 +42,7 @@ export const ACTION_LABELS: Record<ControlContext, Record<ControlAction, string>
     MOVE_DOWN: 'Kretanje nazad',
     ACTION_A: 'Šut · drži i pusti',
     ACTION_B: 'Stav / zagrađivanje',
+    JUMP: 'Mali skok / blok',
     INBOUND: 'Inbound · dodavanje sa strane',
     HAND_LEFT: 'Leva ruka · dribling / crossover',
     HAND_RIGHT: 'Desna ruka · dribling / crossover',
@@ -57,6 +59,7 @@ export const ACTION_LABELS: Record<ControlContext, Record<ControlAction, string>
     MOVE_DOWN: 'Kretanje nazad',
     ACTION_A: 'Contest / pokušaj krađe',
     ACTION_B: 'Niski stav / kontakt',
+    JUMP: 'Mali skok / blok',
     INBOUND: 'Inbound · dodavanje sa strane',
     HAND_LEFT: 'Leva ruka (sa loptom)',
     HAND_RIGHT: 'Desna ruka (sa loptom)',
@@ -72,6 +75,7 @@ export const TOUCH_GLYPHS: Record<TouchSlot, string> = {
   triangle: '△',
   circle: '○',
   cross: '✕',
+  jump: '↑',
 };
 export function createDefaultProfile(): ControlProfile {
   const context = (): ContextBindings => ({
@@ -82,6 +86,7 @@ export function createDefaultProfile(): ControlProfile {
       MOVE_DOWN: ['KeyS', 'ArrowDown'],
       ACTION_A: ['KeyR', 'Space'],
       ACTION_B: ['KeyQ', 'KeyJ'],
+      JUMP: ['KeyF'],
       INBOUND: ['KeyE'],
       HAND_LEFT: ['KeyZ'],
       HAND_RIGHT: ['KeyC'],
@@ -97,7 +102,8 @@ export function createDefaultProfile(): ControlProfile {
       MOVE_UP: { kind: 'axis', index: 1, sign: -1 },
       MOVE_DOWN: { kind: 'axis', index: 1, sign: 1 },
       ACTION_A: { kind: 'button', index: 2 },
-      ACTION_B: { kind: 'button', index: 3 },
+      ACTION_B: { kind: 'button', index: 1 },
+      JUMP: { kind: 'button', index: 3 },
       INBOUND: { kind: 'button', index: 0 },
       HAND_LEFT: null,
       HAND_RIGHT: null,
@@ -107,7 +113,13 @@ export function createDefaultProfile(): ControlProfile {
       SKILL_DOWN: { kind: 'axis', index: 3, sign: 1 },
       PAUSE: { kind: 'button', index: 9 },
     },
-    mobile: { square: 'ACTION_A', triangle: 'ACTION_B', circle: 'HAND_LEFT', cross: 'HAND_RIGHT' },
+    mobile: {
+      square: 'ACTION_A',
+      triangle: 'ACTION_B',
+      circle: 'HAND_LEFT',
+      cross: 'HAND_RIGHT',
+      jump: 'JUMP',
+    },
   });
   const offense = context(),
     defense = context();
@@ -200,6 +212,32 @@ export function restoreProfile(value: unknown): ControlProfile {
         if (action !== 'INBOUND')
           out[context].keyboard[action] = out[context].keyboard[action].filter(
             (key) => key !== 'KeyE',
+          );
+    if (!Object.hasOwn(data.gamepad ?? {}, 'JUMP')) {
+      // Triangle/Y is now dedicated to jump. Migrate the previous default stance
+      // to Circle/B, preserving custom stance bindings that use another control.
+      for (const action of CONTROL_ACTIONS) {
+        if (action === 'JUMP') continue;
+        const binding = out[context].gamepad[action];
+        if (binding?.kind === 'button' && binding.index === 3)
+          out[context].gamepad[action] =
+            action === 'ACTION_B' &&
+            !CONTROL_ACTIONS.some(
+              (other) =>
+                other !== action &&
+                other !== 'JUMP' &&
+                out[context].gamepad[other]?.kind === 'button' &&
+                out[context].gamepad[other]?.index === 1,
+            )
+              ? { kind: 'button', index: 1 }
+              : null;
+      }
+    }
+    if (!Object.hasOwn(data.keyboard ?? {}, 'JUMP'))
+      for (const action of CONTROL_ACTIONS)
+        if (action !== 'JUMP')
+          out[context].keyboard[action] = out[context].keyboard[action].filter(
+            (key) => key !== 'KeyF',
           );
     // Older versions could swap a face button into a skill action. Restoring
     // that unsupported binding to its axis default must not duplicate another action.

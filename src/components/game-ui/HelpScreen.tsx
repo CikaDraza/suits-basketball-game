@@ -4,7 +4,7 @@ const helpSections = [
   {
     title: '01 / OWN THE PAINT',
     description:
-      'Joystick, WASD or arrows to move. Tap △ / Q to post up. Push toward the hoop to back down. Left/right + Q while posting spins toward the rim.',
+      'Joystick, WASD or arrows to move. Q / Circle-B enters or leaves stance; touch uses △. F / Triangle-Y makes a small jump; touch uses ↑. Push toward the hoop to back down. Left/right + Q while posting spins toward the rim.',
   },
   {
     title: '02 / CASH THE SHOT',
@@ -14,7 +14,7 @@ const helpSections = [
   {
     title: '03 / DIRTY DEFENSE',
     description:
-      'Hold □ / R to contest. On defense, the right stick opens the left/right arm with the palm forward. Forward raises both arms; two quick forward flicks wave them. Hold back to check with both forearms; two quick back flicks shove the opponent in front within reach. Return to neutral between flicks. Double-tap △ / Q to flop. Mash Q, R or flick the stick to get up faster.',
+      'Hold □ / R to contest. The right stick controls defensive arms. Forward raises both arms; two quick forward flicks wave them. Hold back to brace with one forearm and cover the side with the other arm; two quick back flicks push with both forearms when contact is within reach. Return to neutral between flicks. Q exits stance and restores natural movement. Double-tap Q / Circle-B to flop. Mash Q, R or flick the stick to get up faster.',
   },
   {
     title: '04 / KNOW WHEN TO REST',
@@ -24,7 +24,7 @@ const helpSections = [
   {
     title: `05 / NO FOULS. FIRST TO ${config.score.winTarget}.`,
     description:
-      'One point in close, two beyond the arc. The scorer keeps possession. Every start and restart uses the left sideline. Out of bounds awards the opponent of the last player to touch the ball. Q / Triangle seals; Cross / A / E passes in the inbound window.',
+      'One point in close, two beyond the arc. The scorer keeps possession. Every start and restart uses the left sideline. Out of bounds awards the opponent of the last player to touch the ball. Q / Circle-B seals; Cross / A / E passes in the inbound window.',
   },
   {
     title: '06 / LOCAL DUEL',

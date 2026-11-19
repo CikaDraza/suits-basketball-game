@@ -73,6 +73,7 @@ export function readGamepadInput(
     x,
     z,
     q: value('ACTION_B') > 0.5,
+    jump: value('JUMP') > 0.5,
     r: value('ACTION_A') > 0.5,
     inbound: value('INBOUND') > 0.5,
     hand: 0,

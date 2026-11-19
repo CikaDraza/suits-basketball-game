@@ -39,6 +39,7 @@ export type TestSeam = {
       moveZ: number;
       actionA: boolean;
       actionB: boolean;
+      jump: boolean;
       inbound: boolean;
       handLeft: boolean;
       handRight: boolean;
@@ -96,6 +97,7 @@ function createDefaultTestSeam(): TestSeam {
       }
       if (input.actionA !== undefined) state.setAction('actionA', input.actionA);
       if (input.actionB !== undefined) state.setAction('actionB', input.actionB);
+      if (input.jump !== undefined) state.setAction('jump', input.jump);
       if (input.inbound !== undefined) state.setAction('inbound', input.inbound);
       if (input.handLeft !== undefined) state.setAction('handLeft', input.handLeft);
       if (input.handRight !== undefined) state.setAction('handRight', input.handRight);

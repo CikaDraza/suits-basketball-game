@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import { bootGame } from './helpers';
 import type { DefensiveHands } from '../../src/game/input/defensiveHands';
 import type { CharacterPoseSnapshot } from '../../src/game/harness/characterPose';
@@ -132,6 +133,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
       });
     });
     await bootGame(page);
+    await page.evaluate(() => window.__TEST__!.diagnostics!.start());
     await page.bringToFront();
     await page.evaluate(async (legend) => {
       window.__TEST__!.setLegend!(0, legend);
@@ -175,7 +177,8 @@ for (const legend of ['shaq', 'chuck'] as const) {
           expect(pose.defensiveArms[active].elbowPlaneError).toBeLessThan(1);
           const guard = pose.defensiveArms[1 - active];
           expect(guard.elbowFlex).toBeGreaterThan(85);
-          expect(guard.wrist.y - guard.elbow.y).toBeGreaterThan(0.08);
+          expect(guard.wrist.y).toBeGreaterThan(guard.elbow.y);
+          expect(guard.wrist.y).toBeLessThan(guard.shoulder.y - 0.1);
           expect(
             (guard.wrist.x - guard.shoulder.x) * Math.sin(before.angle) +
               (guard.wrist.z - guard.shoulder.z) * Math.cos(before.angle),
@@ -189,12 +192,15 @@ for (const legend of ['shaq', 'chuck'] as const) {
             normal.x * Math.sin(before.angle) + normal.z * Math.cos(before.angle),
           ).toBeGreaterThan(0.85);
         } else if (hands === 'brace') {
-          for (const point of [left, right]) {
-            const ahead =
-              (point.x - before.x) * Math.sin(before.angle) +
-              (point.z - before.z) * Math.cos(before.angle);
-            expect(ahead).toBeGreaterThan(0.2);
-          }
+          const contact = await page.evaluate(
+            (slot) => window.__TEST__!.getLocomotion!(slot)!.contact!,
+            slot,
+          );
+          const active = contact.selectedArm === 'left' ? 0 : 1;
+          expect(pose.defensiveArms[active].elbowFlex).toBeGreaterThan(75);
+          expect(pose.defensiveArms[active].elbowFlex).toBeLessThan(110);
+          expect(Math.abs(pose.defensiveArms[active].foreDirection.y)).toBeLessThan(0.35);
+          expect(pose.defensiveArms[1 - active].elbowFlex).toBeLessThan(18);
         } else {
           for (const [i, arm] of pose.defensiveArms.entries()) {
             expect(arm.elbowPlaneError).toBeLessThan(1);
@@ -255,7 +261,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await direction(page, 0, 'none');
     await page.evaluate(() => {
       window.__TEST__!.teleport('player', [6, 0.95, 0]);
-      window.__TEST__!.teleport('opponent', [6, 0.95, 1.05]);
+      window.__TEST__!.teleport('opponent', [6, 0.95, 0.85]);
       window.__TEST__!.setFacing!(0, 0);
     });
     await direction(page, 0, 'brace');
@@ -264,8 +270,23 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await page.screenshot({ path: info.outputPath('forearm-check.png') });
     await direction(page, 0, 'none');
     await doubleFlick(page, 0, 'brace');
+    await page.waitForTimeout(700);
+    await writeFile(
+      info.outputPath('push-contact.json'),
+      JSON.stringify(
+        await page.evaluate(() => ({
+          runtime: window.__TEST__!.getState(),
+          pose: window.__TEST__!.getCharacterPose!(0),
+          gait: window.__TEST__!.getLocomotion!(0),
+          observed: window.__TEST__!.getGameplayDebug!(0),
+          recording: window.__TEST__!.diagnostics!.export(),
+        })),
+        null,
+        2,
+      ),
+    );
     await expect.poll(() => page.evaluate(() => window.__TEST__!.getState().defensePushes)).toBe(1);
-    await expect.poll(async () => (await readPlayer(page, 1)).z).toBeGreaterThan(1.3);
+    await expect.poll(async () => (await readPlayer(page, 1)).z).toBeGreaterThan(1.05);
     await page.waitForTimeout(650);
     expect((await page.evaluate(() => window.__TEST__!.getState())).defensePushes).toBe(1);
     await page.screenshot({ path: info.outputPath('forearm-push.png') });

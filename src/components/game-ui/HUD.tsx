@@ -125,7 +125,7 @@ export function HUD() {
       <InboundPrompt />
       <div className="control-legend">
         <span>MOVE</span>
-        <span>{movement ? '△ STANCE' : '△ POST / SPIN'}</span>
+        <span>{movement ? 'Q STANCE · F JUMP' : 'Q POST / SPIN · F JUMP'}</span>
         <span>{movement ? '□ CONTEST · RS HANDS' : '□ SHOOT / CONTEST'}</span>
       </div>
     </div>

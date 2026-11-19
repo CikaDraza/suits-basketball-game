@@ -5,6 +5,7 @@ import { config } from '../data/gameConfig';
 
 export const SHAQ_DEFENSE_CLIP = 'SHAQ_DEFENSE_SEQUENCE_V01';
 const LOWER = /^mixamorig:?(Hips|(Left|Right)(UpLeg|Leg|Foot|ToeBase|Toe_End))$/;
+const ARM = /^mixamorig:?(Left|Right)(Shoulder|Arm|ForeArm|Hand)/;
 const smooth = (x: number) => x * x * (3 - 2 * x);
 
 /** One presentation layer in Character's pose pass; never moves the capsule or source rig. */
@@ -25,8 +26,10 @@ export function createImportedDefense(
       {
         bone,
         lower: LOWER.test(bone.name),
+        arm: ARM.test(bone.name),
         rest: bone.quaternion.clone(),
         from: bone.quaternion.clone(),
+        armFrom: bone.quaternion.clone(),
         sample: new QuaternionLinearInterpolant(track.times, track.values, 4, new Float32Array(4)),
       },
     ];
@@ -47,13 +50,26 @@ export function createImportedDefense(
     lowerWeight: 0,
     applied: 0,
     appliedLower: 0,
+    armsOwned: false,
+    armOwner: 'none' as 'none' | 'imported-defense' | 'defensive-arm-ik',
+    overheadInterrupted: false,
+    armReleaseWeight: 0,
+    feetOwned: false,
   };
   return {
     debug,
     resetPose() {
       for (const track of tracks) track.bone.quaternion.copy(track.rest);
     },
-    step(dt: number, wantStance: boolean, allowed: boolean, moving: boolean, reset: boolean) {
+    step(
+      dt: number,
+      wantStance: boolean,
+      allowed: boolean,
+      moving: boolean,
+      reset: boolean,
+      armCommand = false,
+      footCommand = moving,
+    ) {
       debug.applied = debug.appliedLower = 0;
       debug.requested = wantStance;
       if (reset || !allowed) {
@@ -61,6 +77,10 @@ export function createImportedDefense(
         transition = tuning.blendDuration;
         debug.phase = 'inactive';
         debug.weight = debug.lowerWeight = debug.time = 0;
+        debug.armsOwned = debug.overheadInterrupted = false;
+        debug.armOwner = 'none';
+        debug.armReleaseWeight = 0;
+        debug.feetOwned = false;
         if (!allowed) return;
       }
       if (wantStance !== requested) {
@@ -69,25 +89,50 @@ export function createImportedDefense(
         for (const track of tracks) track.from.copy(reset ? track.rest : track.bone.quaternion);
         requested = wantStance;
         transition = 0;
-        if (requested) debug.time = 0;
+        if (requested) {
+          debug.time = 0;
+          debug.armsOwned = debug.overheadInterrupted = false;
+          debug.armReleaseWeight = 0;
+          debug.feetOwned = false;
+        }
       }
+      if (requested && armCommand && !debug.armsOwned) {
+        for (const track of tracks) if (track.arm) track.armFrom.copy(track.bone.quaternion);
+        debug.armsOwned = debug.overheadInterrupted = true;
+        debug.armReleaseWeight = 1;
+      }
+      if (requested && footCommand) debug.feetOwned = true;
+      debug.armReleaseWeight = Math.max(0, debug.armReleaseWeight - dt / tuning.blendDuration);
       transition = Math.min(tuning.blendDuration, transition + dt);
       const alpha = smooth(transition / tuning.blendDuration);
       debug.weight = requested ? alpha : 1 - alpha;
       if (requested) {
         debug.time = Math.min(clip.duration, debug.time + dt);
         debug.lowerWeight +=
-          (Number(!moving) - debug.lowerWeight) * (1 - Math.exp(-tuning.lowerBlendRate * dt));
+          (Number(!moving && !debug.feetOwned) - debug.lowerWeight) *
+          (1 - Math.exp(-tuning.lowerBlendRate * dt));
         if (debug.lowerWeight < 0.001) debug.lowerWeight = 0;
         debug.phase = alpha < 1 ? 'enter' : debug.time >= clip.duration ? 'hold' : 'playing';
       } else {
         debug.phase = debug.weight > 0 ? 'exit' : 'inactive';
         if (debug.weight === 0) debug.lowerWeight = 0;
       }
+      debug.armOwner =
+        debug.phase === 'inactive'
+          ? 'none'
+          : debug.armsOwned && requested
+            ? 'defensive-arm-ik'
+            : 'imported-defense';
     },
     apply() {
       if (debug.phase === 'inactive') return;
       for (const track of tracks) {
+        if (requested && track.arm && debug.armsOwned) {
+          // A neutral stick never reacquires the clip. Blend the last rendered arm
+          // into the controller's base instead of sampling the overhead ending.
+          track.bone.quaternion.slerp(track.armFrom, debug.armReleaseWeight);
+          continue;
+        }
         const lowerInfluence = requested
           ? 1 - debug.weight + debug.weight * debug.lowerWeight
           : debug.weight;

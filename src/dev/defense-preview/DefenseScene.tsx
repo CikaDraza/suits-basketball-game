@@ -25,6 +25,7 @@ export interface DefensePreviewApi {
 declare global {
   interface Window {
     __DEFENSE_PREVIEW__?: DefensePreviewApi;
+    __JUMP_PREVIEW__?: DefensePreviewApi;
   }
 }
 
@@ -33,58 +34,61 @@ export function DefenseScene({
   speed,
   restart,
   onReport,
+  assetPath = ANIMATION_PATHS.shaq.defense,
+  clipName = DEFENSE_CLIP,
+  apiKey = '__DEFENSE_PREVIEW__',
 }: {
   playing: boolean;
   speed: number;
   restart: number;
   onReport: (report: DefenseReport) => void;
+  assetPath?: string;
+  clipName?: string;
+  apiKey?: '__DEFENSE_PREVIEW__' | '__JUMP_PREVIEW__';
 }) {
-  const [active, source] = useGLTF([
-    `${base}${MODEL_PATHS.shaq}`,
-    `${base}${ANIMATION_PATHS.shaq.defense}`,
-  ]);
+  const [active, source] = useGLTF([`${base}${MODEL_PATHS.shaq}`, `${base}${assetPath}`]);
   const model = useMemo(() => {
     const instance = clone(active.scene);
     isolateWalkingCharacter(instance);
     return instance;
   }, [active.scene]);
   const bound = useMemo(() => {
-    const clip = source.animations.find((clip) => clip.name === DEFENSE_CLIP);
-    if (!clip) throw new Error(`Missing clip: ${DEFENSE_CLIP}`);
+    const clip = source.animations.find((clip) => clip.name === clipName);
+    if (!clip) throw new Error(`Missing clip: ${clipName}`);
     return bindAnimationClip(source.scene, model, clip);
-  }, [source, model]);
+  }, [source, model, clipName]);
   const clips = useMemo(() => [bound.clip], [bound]);
   const { actions, mixer } = useAnimations(clips, model);
 
   useEffect(() => onReport(bound.report), [onReport, bound]);
   useEffect(() => {
-    const action = actions[DEFENSE_CLIP]!;
+    const action = actions[clipName]!;
     action.reset().setLoop(LoopOnce, 1);
     action.clampWhenFinished = true;
     action.play();
     return () => {
       action.stop();
     };
-  }, [actions, restart]);
+  }, [actions, restart, clipName]);
   useEffect(() => {
-    const action = actions[DEFENSE_CLIP]!;
+    const action = actions[clipName]!;
     action.paused = !playing;
     action.setEffectiveTimeScale(speed);
     mixer.update(0);
-  }, [actions, mixer, playing, speed, restart]);
+  }, [actions, mixer, playing, speed, restart, clipName]);
   useEffect(() => {
     const point = new Vector3();
     const api: DefensePreviewApi = {
       report: bound.report,
       seek(time) {
         if (!Number.isFinite(time)) return;
-        const action = actions[DEFENSE_CLIP]!;
+        const action = actions[clipName]!;
         action.time = Math.max(0, Math.min(bound.clip.duration, time));
         mixer.update(0);
         model.updateMatrixWorld(true);
       },
       getState() {
-        const action = actions[DEFENSE_CLIP]!;
+        const action = actions[clipName]!;
         model.updateWorldMatrix(true, true);
         const visibleMeshes: string[] = [];
         model.traverseVisible((node) => {
@@ -105,11 +109,11 @@ export function DefenseScene({
         };
       },
     };
-    window.__DEFENSE_PREVIEW__ = api;
+    window[apiKey] = api;
     return () => {
-      if (window.__DEFENSE_PREVIEW__ === api) delete window.__DEFENSE_PREVIEW__;
+      if (window[apiKey] === api) delete window[apiKey];
     };
-  }, [actions, mixer, bound, model]);
+  }, [actions, mixer, bound, model, apiKey, clipName]);
   useEffect(
     () => () => {
       const skeletons = new Set<SkinnedMesh['skeleton']>();

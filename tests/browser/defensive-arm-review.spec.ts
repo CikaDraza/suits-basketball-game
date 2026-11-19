@@ -40,7 +40,8 @@ function checkAnatomy(pose: CharacterPoseSnapshot, mode: string) {
     } else if (mode === 'ready' || mode === 'left' || mode === 'right') {
       expect(a.elbowFlex).toBeGreaterThan(85);
       expect(a.elbowFlex).toBeLessThan(105);
-      expect(a.wrist.y - a.elbow.y).toBeGreaterThan(length * 0.15);
+      expect(a.wrist.y).toBeGreaterThan(a.elbow.y);
+      expect(a.wrist.y).toBeLessThan(a.shoulder.y - 0.1);
     }
   }
 }

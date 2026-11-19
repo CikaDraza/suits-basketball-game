@@ -17,6 +17,7 @@ export const MODEL_PATHS: Readonly<Record<Legend, string>> = {
 export const ANIMATION_PATHS = {
   shaq: {
     defense: 'models/animations/shaq_defense_sequence_clean.glb',
+    smallJump: 'models/animations/shaq_small_block_jump_clean.glb',
   },
   chuck: {},
 } as const;

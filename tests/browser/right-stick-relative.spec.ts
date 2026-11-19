@@ -256,6 +256,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     expect(proof.rearmed.selected).toBe('brace');
     await writeFile(`${directory}/${legend}-hold-proof.json`, JSON.stringify(proof, null, 2));
     await page.evaluate(() => window.__TEST__!.setDebugFlag('rightStick', true));
+    await page.getByRole('button', { name: 'RS DETAILS', exact: true }).click();
     await expect(page.getByTestId('right-stick-action')).toContainText('brace');
     await page.screenshot({ path: `${directory}/${legend}-debug-overlay.png` });
   });
