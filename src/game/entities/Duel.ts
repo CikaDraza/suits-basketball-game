@@ -16,7 +16,7 @@ import { createDefensiveHandInput, hasRaisedDefensiveHands } from '../input/defe
 import {
   defensivePushImpulse,
   forearmContacts,
-  hasMeasuredForearmContact,
+  measuredForearmGap,
   pushEvidence,
 } from '../simulation/defensivePush';
 import { defensiveStanceYaw } from './defensiveFacing';
@@ -375,6 +375,28 @@ function defensiveFacing(i: number): number | null {
     return facing(p, o.x, o.z);
   return null;
 }
+/** Off-ball low stance against the current ball handler, distinct from an offensive post-up. */
+function isLowDefender(slot: number) {
+  return duel.players[slot].mode === 'post' && duel.ballState === 'held' && duel.owner === 1 - slot;
+}
+
+function currentForearmGap(slot: number, mode: 'brace' | 'push') {
+  const actor = bodies.players[slot]?.translation();
+  const opponent = bodies.players[1 - slot]?.translation();
+  if (!actor || !opponent) return null;
+  return measuredForearmGap(
+    forearmContacts[slot],
+    duel.time,
+    {
+      ...actor,
+      y: actor.y - c.physics.halfHeight - c.physics.radius,
+      angle: duel.players[slot].angle,
+    },
+    { ...duel.players[1 - slot], ...opponent },
+    mode,
+  );
+}
+
 /** Translate the last rendered hand offset by the body's exact current physics position. */
 function receiverCatchTarget(slot: PlayerSlot): PassPoint {
   const p = duel.players[slot];
@@ -1153,8 +1175,8 @@ export function tickDuel(delta: number) {
             withinRange: false,
             contactEstablished: false,
             impulseApplied: false,
-            target: freeMovement() ? null : 1 - i,
-            origin: freeMovement() ? null : { x: o.x, z: o.z },
+            target: bodies.players[1 - i] ? 1 - i : null,
+            origin: null,
             displacement: 0,
             velocityBefore: null,
             measuredVelocity: null,
@@ -1437,12 +1459,25 @@ export function tickDuel(delta: number) {
         }
       }
       if (
-        (p.chargeStance || p.defenseHands === 'brace') &&
+        (p.chargeStance ||
+          p.defenseHands === 'brace' ||
+          (duel.time - p.defensePushAt < c.defense.hands.pushDuration && !p.defensePushApplied)) &&
         bodies.players[1 - i] &&
         dist(p, o) < c.defense.guardRange
       )
         targetAngle = facing(p, o.x, o.z);
       if (staggering) targetAngle = p.staggerYaw;
+      if (isLowDefender(i) && p.jump.grounded && bodies.players[1 - i]) {
+        const distance = dist(p, o);
+        const contactRange = 2 * c.physics.radius + c.physics.contactPadding;
+        if (distance > 1e-5 && distance < contactRange) {
+          const nx = (o.x - p.x) / distance,
+            nz = (o.z - p.z) / distance;
+          const excess = Math.max(0, x * nx + z * nz - c.defense.hands.pressureApproachSpeed);
+          x -= excess * nx;
+          z -= excess * nz;
+        }
+      }
       const turn = Math.atan2(Math.sin(targetAngle - p.angle), Math.cos(targetAngle - p.angle));
       p.angle += turn * (1 - Math.exp(-c.ballControl.turnRate * dt));
       movementRequests[i] = {
@@ -1667,10 +1702,13 @@ export function tickDuel(delta: number) {
       p.mode === 'down' ||
       p.mode === 'stun' ||
       p.chargeStance ||
+      !p.jump.grounded ||
       duel.time < p.staggerUntil ||
       inputContext(i) !== 'defense'
     ) {
       p.defensePushApplied = true;
+      if (import.meta.env.DEV && pushEvidence[i])
+        pushEvidence[i]!.result = bodies.players[1 - i] ? 'unavailable' : 'no-opponent';
       return;
     }
     const o = duel.players[1 - i];
@@ -1678,7 +1716,9 @@ export function tickDuel(delta: number) {
       { x: p.x, z: p.z, angle: p.angle, mass: c.player[p.legend].mass },
       { x: o.x, z: o.z, mass: c.player[o.legend].mass },
     );
-    const measuredContact = hasMeasuredForearmContact(forearmContacts[i], duel.time, p, o);
+    const gap = currentForearmGap(i, 'push');
+    const measuredContact = gap !== null && gap <= c.defense.hands.forearmContactTolerance;
+    const targetAvailable = o.jump.grounded && o.mode !== 'dunk' && o.mode !== 'down';
     // Sample contact through a short window so low render rates cannot turn an
     // unrendered extension frame into either a hit or a permanent early miss.
     if (
@@ -1687,41 +1727,53 @@ export function tickDuel(delta: number) {
     )
       return;
     p.defensePushApplied = true;
+    const result = !impulse
+      ? 'out-of-range-or-facing'
+      : gap === null
+        ? 'no-fresh-forearm'
+        : !measuredContact
+          ? 'forearm-out-of-reach'
+          : !targetAvailable
+            ? 'unavailable'
+            : 'hit';
     if (import.meta.env?.DEV && pushEvidence[i]) {
-      pushEvidence[i]!.withinRange = !!impulse;
-      pushEvidence[i]!.contactEstablished = measuredContact;
-      pushEvidence[i]!.velocityBefore = bodies.players[1 - i]?.linvel() ?? null;
-      pushEvidence[i]!.requestedDeltaVelocity = impulse;
+      const evidence = pushEvidence[i]!;
+      evidence.withinRange = !!impulse;
+      evidence.contactEstablished = measuredContact;
+      evidence.measuredGap = gap;
+      evidence.result = result;
+      evidence.velocityBefore = bodies.players[1 - i]?.linvel() ?? null;
+      evidence.requestedDeltaVelocity = impulse;
     }
     if (import.meta.env?.DEV)
       motionRecorder.event(
         'contact.push',
         {
           computedImpulse: impulse,
-          impulse: measuredContact && o.mode !== 'dunk' && o.mode !== 'down' ? impulse : null,
+          impulse: result === 'hit' ? impulse : null,
           target: 1 - i,
-          applied: !!impulse && measuredContact && o.mode !== 'dunk' && o.mode !== 'down',
+          applied: result === 'hit',
           measuredContact,
+          measuredGap: gap,
           forearm: forearmContacts[i],
         },
-        {
-          slot: i,
-          reason: !impulse
-            ? 'out-of-contact-range'
-            : !measuredContact
-              ? 'no-measured-forearm-contact'
-              : o.mode === 'dunk' || o.mode === 'down'
-                ? 'target-disabled'
-                : 'contact-impulse',
-        },
+        { slot: i, reason: result },
       );
-    if (!impulse || !measuredContact || o.mode === 'dunk' || o.mode === 'down') return;
+    if (!impulse || result !== 'hit') {
+      if (result === 'out-of-range-or-facing' || result === 'forearm-out-of-reach')
+        say('Push je promašio. Priđi i okreni se protivniku.', i);
+      return;
+    }
     o.vx += impulse.x;
     o.vz += impulse.z;
     o.staggerUntil = duel.time + c.defense.hands.pushRecovery;
     o.staggerYaw = Math.atan2(-impulse.x, -impulse.z);
-    if (import.meta.env?.DEV && pushEvidence[i]) pushEvidence[i]!.impulseApplied = true;
+    if (import.meta.env?.DEV && pushEvidence[i]) {
+      pushEvidence[i]!.impulseApplied = true;
+      pushEvidence[i]!.origin = { x: o.x, z: o.z };
+    }
     duel.defensePushes++;
+    sound('post');
     impact(p);
     say('Obe podlaktice — napravi prostor!', i);
   });
@@ -1731,7 +1783,10 @@ export function tickDuel(delta: number) {
   if (bodies.players[1] && d < c.physics.radius * 2 + c.physics.contactPadding) {
     duel.players.forEach((p, i) => {
       const o = duel.players[1 - i];
-      if (o.mode === 'down' && p.moving > c.player.minMove && p.mode !== 'down' && p.grace <= 0) {
+      const nx = (o.x - p.x) / d,
+        nz = (o.z - p.z) / d;
+      const pressing = p.moveVX * nx + p.moveVZ * nz > c.player.minMove;
+      if (o.mode === 'down' && pressing && p.mode !== 'down' && p.grace <= 0) {
         p.mode = 'down';
         p.fallBackward = false;
         p.timer = c.player.downDuration;
@@ -1742,7 +1797,10 @@ export function tickDuel(delta: number) {
       } else if (
         p.mode !== 'down' &&
         p.mode !== 'stun' &&
-        p.moving > c.player.minMove &&
+        p.jump.grounded &&
+        o.jump.grounded &&
+        !isLowDefender(i) &&
+        pressing &&
         p.cooldown <= 0
       ) {
         const power =
@@ -1750,13 +1808,16 @@ export function tickDuel(delta: number) {
           (p.mode === 'post' ? c.player.postImpulse : c.player.normalImpulse) *
           (p.energy < c.player.exhaustedThreshold ? c.player.exhaustedPush : 1);
         const ratio = c.player[p.legend].mass / c.player[o.legend].mass;
+        const braceGap = o.defenseHands === 'brace' ? currentForearmGap(1 - i, 'brace') : null;
         const planted =
           o.chargeStance ||
-          (o.defenseHands === 'brace' &&
-            hasMeasuredForearmContact(forearmContacts[1 - i], duel.time, o, p));
+          (braceGap !== null && braceGap <= c.defense.hands.forearmContactTolerance) ||
+          (isLowDefender(1 - i) &&
+            -Math.sin(o.angle) * nx - Math.cos(o.angle) * nz >= c.defense.hands.pushMinFacing);
+        if (planted && d > c.physics.radius * 2 + c.defense.hands.bodyContactSkin) return;
         const kick = power * ratio * (planted ? c.defense.hands.plantedBumpScale : 1);
-        o.vx += ((o.x - p.x) / d) * kick;
-        o.vz += ((o.z - p.z) / d) * kick;
+        o.vx += nx * kick;
+        o.vz += nz * kick;
         p.cooldown = c.player.bumpCooldown;
         duel.bumps++;
         impact(p);

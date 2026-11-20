@@ -860,14 +860,20 @@ export function Character({ index, legend }: CharacterProps) {
       !jumpActive && !controlled && !receiving && grounded && p.mode !== 'stun';
     if (defensiveArmsEnabled) {
       applyDefensiveArmPose(target, defensiveHands, t, pushAge / config.defense.hands.pushDuration);
-      if (defensiveHands === 'brace' || defensiveHands === 'push')
-        target.lean = Math.max(
-          target.lean,
-          config.defense.hands.braceLean +
-            (defensiveHands === 'push'
-              ? defensivePushPose(pushAge / config.defense.hands.pushDuration).extension * 0.08
-              : 0),
-        );
+      if (defensiveHands === 'brace' || defensiveHands === 'push') {
+        const handsConfig = config.defense.hands;
+        const contactLean =
+          defensiveHands === 'brace'
+            ? handsConfig.braceContactLean *
+              clamp(
+                (2 * config.physics.radius + config.physics.contactPadding - opponentDistance) /
+                  config.physics.contactPadding,
+                0,
+                1,
+              )
+            : defensivePushPose(pushAge / handsConfig.pushDuration).extension * 0.08;
+        target.lean = Math.max(target.lean, handsConfig.braceLean + contactLean);
+      }
     }
 
     // posture lean: low defensive stance; bracing leans into the blocker
@@ -1141,11 +1147,12 @@ export function Character({ index, legend }: CharacterProps) {
       p.angle,
       Math.min(rawDt, 0.25),
     );
+    const opponentPoint = bodies.players[1 - index]?.translation();
     defenseArms.update(
       defensiveHands,
       groundPoint,
       p.angle,
-      opponent ? { ...opponent, y: bodies.players[1 - index]?.translation().y } : null,
+      opponent && opponentPoint ? { ...opponent, ...opponentPoint } : null,
       Math.min(rawDt, 0.25),
       defensiveArmsEnabled &&
         (p.chargeStance ||
@@ -1201,14 +1208,20 @@ export function Character({ index, legend }: CharacterProps) {
         target: { ...defenseArms.debug.target },
         forearm: { ...defenseArms.debug.forearm },
       };
-    forearmContacts[index] = {
-      time: t,
-      actor: { x: p.x, z: p.z },
-      opponent: opponent ? { x: opponent.x, z: opponent.z } : null,
-      mode: defensiveHands,
-      valid: defensiveArmsEnabled && defenseArms.debug.contactValid,
-      targetDistance: defenseArms.debug.targetDistance,
-    };
+    forearmContacts[index] =
+      (defensiveHands === 'brace' || defensiveHands === 'push') &&
+      defenseArms.contactArms.length > 0 &&
+      !preview
+        ? {
+            time: t,
+            actor: { x: groundPoint.x, y: groundPoint.y, z: groundPoint.z, angle: p.angle },
+            mode: defensiveHands,
+            arms: defenseArms.contactArms.map(({ elbow, wrist }) => ({
+              elbow: { ...elbow },
+              wrist: { ...wrist },
+            })),
+          }
+        : null;
     if (
       import.meta.env.DEV &&
       defensiveHands === 'push' &&

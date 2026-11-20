@@ -323,6 +323,12 @@ export function MotionAuditPanel({
                 ? `${physics.players[slot].push!.gestureAccepted} / ${physics.players[slot].push!.animationPerformed} / ${physics.players[slot].push!.withinRange}`
                 : 'none'}
             </dd>
+            <dt>Push decision / gap at resolution</dt>
+            <dd>
+              {physics?.players[slot]?.push
+                ? `${physics.players[slot].push!.result ?? 'pending'} / ${physics.players[slot].push!.measuredGap?.toFixed(3) ?? '—'} m`
+                : 'none'}
+            </dd>
             <dt>Contact / impulse / measured displacement</dt>
             <dd>
               {physics?.players[slot]?.push

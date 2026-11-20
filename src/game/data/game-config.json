@@ -421,9 +421,14 @@
       "pushSpeed": 1.8,
       "pushRecovery": 0.42,
       "plantedBumpScale": 0.32,
-      "forearmContactTolerance": 0.13,
+      "forearmContactTolerance": 0.065,
+      "contactSampleAge": 0.16,
+      "contactSampleTravel": 0.33,
+      "pressureApproachSpeed": 0.55,
+      "bodyContactSkin": 0.04,
       "braceTorsoHeight": 0.86,
-      "braceLean": 0.5
+      "braceLean": 0.5,
+      "braceContactLean": 0.15
     },
     "guardRange": 3.2,
     "denyBallBias": 0.6,

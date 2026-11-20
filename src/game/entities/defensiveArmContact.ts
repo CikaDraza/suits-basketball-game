@@ -6,6 +6,7 @@ import { createDefensiveArmIK, type DefensiveArmLimits } from './defensiveArmIK'
 import { palmFrame } from './palmSockets';
 import { contactArm } from './locomotion';
 import { defensivePushPose } from './defensivePushPose';
+import { forearmTorsoGap, torsoCenterY, type TorsoBody } from '../simulation/defensivePush';
 import { clamp } from '../utils/math';
 
 const LIMITS: Record<'extension' | 'guard' | 'contact', DefensiveArmLimits> = {
@@ -82,8 +83,8 @@ export function createDefensiveArmContact(
   let contactSide: -1 | 1 = 1;
   const contactPoint = new Vector3(),
     forearm = new Vector3(),
-    segment = new Vector3(),
     toward = new Vector3();
+  const contactArms: ReturnType<typeof createDefensiveArmIK>['debug'][] = [];
   const debug = {
     selectedArm: 'left' as 'left' | 'right' | 'both',
     virtual: true,
@@ -97,6 +98,7 @@ export function createDefensiveArmContact(
   return {
     solvers,
     debug,
+    contactArms,
     get active() {
       return memory.some((m) => m.weight > 0.001);
     },
@@ -104,14 +106,7 @@ export function createDefensiveArmContact(
       hands: DefensiveArmMode,
       floor: Vector3,
       angle: number,
-      opponent: {
-        x: number;
-        z: number;
-        legend: Legend;
-        angle?: number;
-        y?: number;
-        mode?: string;
-      } | null,
+      opponent: TorsoBody | null,
       dt: number,
       enabled: boolean,
       pushProgress = 0,
@@ -136,28 +131,10 @@ export function createDefensiveArmContact(
         ? Math.hypot(opponent.x - floor.x, opponent.z - floor.z)
         : Infinity;
       debug.phase = mode === 'push' ? push.phase : mode;
-      if (opponent) {
-        // Closest surface of an oriented torso envelope, in the opponent's actual transform.
-        solvers[contactSide > 0 ? 0 : 1].arm.upper.getWorldPosition(shoulder);
-        toward.set(shoulder.x - opponent.x, 0, shoulder.z - opponent.z).normalize();
-        const yaw = opponent.angle ?? 0;
-        const side = toward.x * Math.cos(yaw) - toward.z * Math.sin(yaw);
-        const ahead = toward.x * Math.sin(yaw) + toward.z * Math.cos(yaw);
-        const radius = config.physics.radius / Math.sqrt((side / 0.95) ** 2 + (ahead / 0.8) ** 2);
-        contactPoint
-          .set(
-            opponent.x,
-            (opponent.y ?? config.physics.halfHeight + config.physics.radius) -
-              config.physics.halfHeight -
-              config.physics.radius +
-              config.ballControl[opponent.legend].holdHeight *
-                config.defense.hands.braceTorsoHeight -
-              (opponent.mode === 'post' ? config.ballControl[opponent.legend].postDrop : 0),
-            opponent.z,
-          )
-          .addScaledVector(toward, radius);
-      } else {
-        // A local training target has no physical opponent/contact.
+      contactArms.length = 0;
+      if (opponent) contactPoint.set(opponent.x, torsoCenterY(opponent), opponent.z);
+      else {
+        // Training shows the gesture against a local target without creating contact.
         contactPoint
           .copy(floor)
           .addScaledVector(forward, config.physics.radius + solvers[0].foreLength * 0.7);
@@ -244,20 +221,38 @@ export function createDefensiveArmContact(
             pole.set(sign * 0.85, -0.6, 0.45);
           } else if (contact) {
             solver.arm.upper.getWorldPosition(shoulder);
+            if (opponent) {
+              // Each arm reaches the surface on its own side of the torso.
+              toward.set(shoulder.x - opponent.x, 0, shoulder.z - opponent.z).normalize();
+              const yaw = opponent.angle ?? 0;
+              const side = toward.x * Math.cos(yaw) - toward.z * Math.sin(yaw);
+              const depth = toward.x * Math.sin(yaw) + toward.z * Math.cos(yaw);
+              const radius = config.physics.radius / (Math.hypot(side / 0.95, depth / 0.8) || 1);
+              contactPoint
+                .set(opponent.x, torsoCenterY(opponent), opponent.z)
+                .addScaledVector(toward, radius);
+              if (selected) debug.target.copy(contactPoint);
+            }
             const extension = mode === 'push' ? push.extension : 0;
             // Start from an approximately vertical upper arm and horizontal forearm.
             // Aim at the measured lower torso, with bounded reach and elbow flexion.
+            const sideLimit = solver.foreLength * (mode === 'push' ? 0.65 : 0.35);
             const side = clamp(
               (contactPoint.x - shoulder.x) * left.x + (contactPoint.z - shoulder.z) * left.z,
-              -solver.foreLength * 0.35,
-              solver.foreLength * 0.35,
+              -sideLimit,
+              sideLimit,
             );
+            const nearBody =
+              mode === 'brace' &&
+              opponent &&
+              debug.opponentDistance <=
+                2 * config.physics.radius + config.defense.hands.bodyContactSkin;
             const ahead = clamp(
               (contactPoint.x - shoulder.x) * forward.x +
                 (contactPoint.z - shoulder.z) * forward.z +
                 solver.foreLength * 0.25,
               solver.foreLength * 0.85,
-              solver.foreLength,
+              solver.foreLength * (nearBody ? 1.13 : 1),
             );
             const down = clamp(
               contactPoint.y - shoulder.y,
@@ -339,26 +334,17 @@ export function createDefensiveArmContact(
           dt,
           contact,
         );
-        if (contact && active) {
-          // Closest actual forearm point to the torso target, rather than wrist pose labels.
-          segment.copy(solver.debug.wrist).sub(solver.debug.elbow);
-          const fraction = clamp(
-            toward.copy(contactPoint).sub(solver.debug.elbow).dot(segment) /
-              Math.max(segment.lengthSq(), 1e-8),
-            0,
-            1,
-          );
-          forearm.copy(solver.debug.elbow).addScaledVector(segment, fraction);
-          const distance = forearm.distanceTo(contactPoint);
+        if (contact && opponent && m.weight > 0.8) {
+          const arm = solver.debug;
+          contactArms.push(arm);
+          const distance = forearmTorsoGap(arm, opponent, 0, 0, 0, forearm);
           if (debug.targetDistance === null || distance < debug.targetDistance) {
             debug.targetDistance = distance;
             debug.forearm.copy(forearm);
           }
           debug.contactValid ||=
-            !!opponent &&
             debug.opponentDistance <= config.defense.hands.pushRange &&
-            distance <= config.defense.hands.forearmContactTolerance &&
-            m.weight > 0.8;
+            distance <= config.defense.hands.forearmContactTolerance;
         }
       }
     },

@@ -6,7 +6,10 @@ import { createHandContactPose } from '../src/game/entities/handContactPose';
 import { createDefensiveArmContact } from '../src/game/entities/defensiveArmContact';
 import { defensivePushPose } from '../src/game/entities/defensivePushPose';
 import {
-  hasMeasuredForearmContact,
+  measuredForearmGap,
+  torsoCenterY,
+  defensivePushImpulse,
+  type TorsoBody,
   type ForearmContactSample,
 } from '../src/game/simulation/defensivePush';
 import { config } from '../src/game/data/gameConfig';
@@ -30,27 +33,36 @@ test('push has deliberate preparation, short extension and recovery with continu
     );
 });
 
-test('a recent actual forearm contact is required independently of the accepted/animated push', () => {
-  const actor = { x: 0, z: 0 },
-    opponent = { x: 0, z: 1 };
+test('forearm contact follows a current, rotated torso rather than a stale pair of positions', () => {
+  const actor = { x: 0, y: 0, z: 0, angle: 0 };
+  const opponent = { x: 0, z: 0.85, angle: Math.PI / 2, legend: 'chuck' } satisfies TorsoBody;
+  const y = torsoCenterY(opponent);
   const sample: ForearmContactSample = {
     time: 1,
     actor,
-    opponent,
     mode: 'push',
-    valid: true,
-    targetDistance: 0.02,
+    arms: [{ elbow: { x: 0.24, y, z: 0.19 }, wrist: { x: 0.15, y, z: 0.53 } }],
   };
-  assert.equal(hasMeasuredForearmContact(sample, 1.1, actor, opponent), true);
-  for (const bad of [
-    null,
-    { ...sample, valid: false },
-    { ...sample, opponent: null },
-    { ...sample, mode: 'up' },
-    { ...sample, time: 0 },
-  ])
-    assert.equal(hasMeasuredForearmContact(bad, 1.1, actor, opponent), false);
-  assert.equal(hasMeasuredForearmContact(sample, 1.1, actor, { x: 0, z: 2 }), false);
+  const gap = measuredForearmGap(sample, 1.1, actor, opponent, 'push');
+  assert.ok(gap !== null && gap <= config.defense.hands.forearmContactTolerance);
+  assert.equal(
+    measuredForearmGap(sample, 1.1, { ...actor, x: 0.2 }, { ...opponent, x: 0.2 }, 'push'),
+    gap,
+  );
+  assert.ok(measuredForearmGap(sample, 1.1, actor, { ...opponent, z: 1.3 }, 'push')! > 0.3);
+  assert.ok(measuredForearmGap(sample, 1.1, actor, { ...opponent, y: 1.5 }, 'push')! > 0.3);
+  assert.equal(measuredForearmGap(sample, 1.1, { ...actor, x: 3 }, opponent, 'push'), null);
+  assert.equal(measuredForearmGap(sample, 1.1, { ...actor, angle: 1 }, opponent, 'push'), null);
+  assert.equal(measuredForearmGap(sample, 1.25, actor, opponent, 'push'), null);
+  assert.equal(measuredForearmGap(sample, 1.1, actor, opponent, 'brace'), null);
+});
+
+test('an angled shove acts along the contact line and still rejects targets behind', () => {
+  const actor = { x: 0, z: 0, angle: 0, mass: 150 };
+  const target = { x: 0.4, z: 0.8, mass: 138 };
+  const impulse = defensivePushImpulse(actor, target);
+  assert.ok(impulse && Math.abs(impulse.x / impulse.z - 0.5) < 1e-8);
+  assert.equal(defensivePushImpulse(actor, { ...target, z: -0.8 }), null);
 });
 
 for (const legend of ['shaq', 'chuck'] as const) {

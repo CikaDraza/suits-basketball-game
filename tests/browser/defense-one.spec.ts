@@ -461,3 +461,99 @@ for (const legend of ['shaq', 'chuck'] as const) {
     );
   });
 }
+
+for (const legend of ['shaq', 'chuck'] as const) {
+  test(`${legend}: a diagonal approach from low stance makes contact in 1v1 Defense Practice`, async ({
+    page,
+  }, info) => {
+    test.setTimeout(60_000);
+    await pad(page);
+    await bootGame(page);
+    await page.evaluate((legend) => window.__TEST__!.setLegend!(0, legend), legend);
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await page.getByRole('button', { name: 'TRAINING', exact: true }).click();
+    await page.getByRole('button', { name: /1v1 PRACTICE/ }).click();
+    await page.getByRole('button', { name: 'DEFENSE', exact: true }).click();
+    await page.getByRole('button', { name: /START TRAINING/ }).click();
+    await expect
+      .poll(() => page.evaluate(() => window.__TEST__!.getState().inbound))
+      .toMatchObject({ owner: 1 });
+    await page.evaluate(() => {
+      const seam = window.__TEST__!;
+      seam.teleport('opponent', [6.45, 0.95, 1.25]);
+      seam.teleport('player', [6, 0.95, -0.55]);
+    });
+    await expect
+      .poll(() => page.evaluate(() => window.__TEST__!.getState().inbound), { timeout: 18_000 })
+      .toMatchObject({ stage: 'pass', owner: 1 });
+    await page.evaluate(() => window.__TEST__!.requestInboundPass!(1));
+    await expect.poll(() => page.evaluate(() => window.__TEST__!.getState().owner)).toBe(1);
+    await page.keyboard.press('q');
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window.__TEST__!.getState().player as { mode: string }).mode),
+      )
+      .toBe('post');
+    const approach = await page.evaluate(
+      async ({ inputAngle, radius }) => {
+        const seam = window.__TEST__!;
+        const until = (seam.getState().time as number) + 3;
+        const samples = [];
+        seam.diagnostics!.start();
+        while ((seam.getState().time as number) < until) {
+          const state = seam.getState();
+          const p = state.player as { x: number; z: number };
+          const o = state.opponent as { x: number; z: number };
+          const dx = o.x - p.x,
+            dz = o.z - p.z,
+            distance = Math.hypot(dx, dz);
+          samples.push({ distance, p, o, movement: seam.getLocomotion!(0)?.movement });
+          if (distance < 2 * radius + 0.045) break;
+          window.__d1axes[0] =
+            (0.7 * (dx * Math.cos(inputAngle) - dz * Math.sin(inputAngle))) / distance;
+          window.__d1axes[1] =
+            (0.7 * (dx * Math.sin(inputAngle) + dz * Math.cos(inputAngle))) / distance;
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+        window.__d1axes = [0, 0, 0, 0];
+        return samples;
+      },
+      { inputAngle: config.camera.inputAngle, radius: config.physics.radius },
+    );
+    await writeFile(info.outputPath('approach.json'), JSON.stringify(approach, null, 2));
+    expect(approach[0].distance - approach.at(-1)!.distance).toBeGreaterThan(0.5);
+    expect(approach.at(-1)!.distance).toBeLessThan(2 * config.physics.radius + 0.045);
+    expect(await page.evaluate(() => window.__TEST__!.getState().bumps)).toBe(0);
+    await rs(page, 'brace');
+    await page.evaluate(() => window.__TEST__!.inspectCharacter!('side'));
+    // Wait for the arm to settle while keeping the game on a real physics clock.
+    await page.waitForFunction(
+      (from) => (window.__TEST__!.getState().time as number) > from + 0.35,
+      await page.evaluate(() => window.__TEST__!.getState().time as number),
+    );
+    const brace = await page.evaluate(() => ({
+      contact: window.__TEST__!.getLocomotion!(0)?.contact,
+      pose: window.__TEST__!.getCharacterPose!(0),
+      state: window.__TEST__!.getState(),
+    }));
+    await writeFile(info.outputPath('brace.json'), JSON.stringify(brace, null, 2));
+    await page.screenshot({ path: info.outputPath('practice-brace.png') });
+    expect(brace.contact?.contactValid).toBe(true);
+    await page.evaluate(() => window.__TEST__!.inspectCharacter!(null));
+    await forwardPush(page);
+    await expect.poll(() => page.evaluate(() => window.__TEST__!.getState().defensePushes)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__TEST__!.getState().owner)).toBe(1);
+    await writeFile(
+      info.outputPath('practice-contact.json'),
+      JSON.stringify(
+        await page.evaluate(() => ({
+          event: window.__TEST__!.diagnostics!.export(),
+          player: window.__TEST__!.getLocomotion!(0),
+          opponent: window.__TEST__!.getLocomotion!(1),
+        })),
+        null,
+        2,
+      ),
+    );
+  });
+}
