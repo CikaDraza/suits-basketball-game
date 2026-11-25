@@ -24,7 +24,17 @@ function expectGroundedOrStepping(pose: CharacterPoseSnapshot, gait: Locomotion 
 async function settled(page: import('@playwright/test').Page): Promise<void> {
   await expect
     .poll(() =>
-      page.evaluate(() => window.__TEST__!.getLocomotion!(0)?.feet.every((f) => f.planted)),
+      page.evaluate(() => {
+        const gait = window.__TEST__!.getLocomotion!(0);
+        const pose = window.__TEST__!.getCharacterPose!(0);
+        // A reset can briefly expose planted gait targets while the rendered rig
+        // is still blending from its previous pose. Wait for measured support too.
+        return (
+          gait?.feet.every((f) => f.planted) &&
+          pose != null &&
+          [pose.leftSoleY, pose.rightSoleY].every((y) => y > -0.01 && y < 0.025)
+        );
+      }),
     )
     .toBe(true);
 }

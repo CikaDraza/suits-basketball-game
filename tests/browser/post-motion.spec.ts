@@ -1,15 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import config from '../../src/game/data/game-config.json' with { type: 'json' };
 import { createMovementTransform } from '../../src/game/simulation/coordinates';
 import type { CharacterPoseSnapshot } from '../../src/game/harness/characterPose';
 import { bootGame } from './helpers';
 
-const movement = createMovementTransform(
-  Math.atan2(
-    config.camera.position[0] - config.camera.target[0],
-    config.camera.position[2] - config.camera.target[2],
-  ),
-);
+test.use({ viewport: { width: 800, height: 450 } });
+const movement = createMovementTransform(config.camera.inputAngle);
 const state = (page: Page) => page.evaluate(() => window.__TEST__!.getState());
 const pose = (page: Page) => page.evaluate(() => window.__TEST__!.getCharacterPose!(0)!);
 let runtimeErrors: string[] = [];
@@ -24,6 +21,20 @@ test.afterEach(() => expect(runtimeErrors).toEqual([]));
 async function settle(page: Page, duration = 0.35) {
   const until = (await state(page)).time as number;
   await expect.poll(async () => (await state(page)).time).toBeGreaterThan(until + duration);
+}
+async function screenshot(page: Page, path: string) {
+  // Capturing software WebGL can consume the inbound pass window. Preserve the
+  // observed pose while the screenshot is encoded, then resume real simulation.
+  await page.evaluate(() => {
+    window.__PAUSED__ = true;
+  });
+  try {
+    await page.screenshot({ path });
+  } finally {
+    await page.evaluate(() => {
+      window.__PAUSED__ = false;
+    });
+  }
 }
 
 async function record(page: Page, duration: number) {
@@ -83,7 +94,7 @@ function expectSteps(samples: Awaited<ReturnType<typeof record>>) {
 }
 
 for (const legend of ['shaq', 'chuck'] as const) {
-  test(`${legend}: inbound arms rest until Q, the contact/asking arms switch sides, and Q in the window passes immediately`, async ({
+  test(`${legend}: inbound arms rest until Q, the contact/asking arms switch sides, and E in the window passes immediately`, async ({
     page,
   }, info) => {
     await bootGame(page);
@@ -99,7 +110,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     const idle = await pose(page);
     expect(idle.joints.LeftHand.y).toBeLessThan(idle.joints.LeftArm.y - 0.3);
     expect(idle.joints.RightHand.y).toBeLessThan(idle.joints.RightArm.y - 0.3);
-    await page.screenshot({ path: info.outputPath('idle-arms.png') });
+    await screenshot(page, info.outputPath('idle-arms.png'));
     await page.keyboard.down('q');
     try {
       await expect
@@ -111,24 +122,24 @@ for (const legend of ['shaq', 'chuck'] as const) {
     await settle(page);
     const leftContact = await pose(page);
     expect(leftContact.joints.RightHand.y - leftContact.joints.LeftHand.y).toBeGreaterThan(0.15);
-    await page.screenshot({ path: info.outputPath('left-contact.png') });
+    await screenshot(page, info.outputPath('left-contact.png'));
     await page.evaluate(() => window.__TEST__!.teleport('opponent', [4.1, 0.95, 1.5]));
     await settle(page);
     const rightContact = await pose(page);
     expect(rightContact.joints.LeftHand.y - rightContact.joints.RightHand.y).toBeGreaterThan(0.15);
-    await page.screenshot({ path: info.outputPath('right-contact.png') });
+    await screenshot(page, info.outputPath('right-contact.png'));
     await page.evaluate(
       (input) => window.__TEST__!.setInput({ moveX: input.x, moveZ: input.z }),
       movement.worldToStick(0, -1),
     );
     try {
       expectSteps(await record(page, 0.7));
-      await page.screenshot({ path: info.outputPath('inbound-shuffle.png') });
+      await screenshot(page, info.outputPath('inbound-shuffle.png'));
     } finally {
       await page.evaluate(() => window.__TEST__!.setInput({ moveX: 0, moveZ: 0 }));
     }
     await expect.poll(async () => (await state(page)).inbound).toMatchObject({ stage: 'pass' });
-    await page.keyboard.press('q');
+    await page.keyboard.press('e');
     await expect.poll(async () => (await state(page)).passes).toBe(1);
   });
 
@@ -159,6 +170,7 @@ for (const legend of ['shaq', 'chuck'] as const) {
     try {
       await expect.poll(async () => (await state(page)).dribbles).toBeGreaterThan(0);
       const samples = await record(page, 1.3);
+      await writeFile(info.outputPath('post-steps.json'), JSON.stringify(samples, null, 2));
       expectSteps(samples);
       const first = samples[0],
         last = samples.at(-1)!;

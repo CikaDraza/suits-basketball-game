@@ -1,3 +1,4 @@
+import { motionAudit } from '../diagnostics/motionAudit';
 import { useEffect } from 'react';
 import { useGameStore } from '../state/gameStore';
 import { useControlSettingsStore } from '../state/controlSettingsStore';
@@ -37,6 +38,16 @@ export function useGamepadPause() {
           getPadNeutral(settings.profile, pad),
         ).pause;
         if (pressed && !previous[slot]) {
+          if (import.meta.env.DEV)
+            motionAudit.input(
+              'gamepad-pause',
+              {
+                device: pad?.id,
+                bindings: settings.profile[readControlContext(slot)].gamepad.PAUSE,
+                action: 'PAUSE',
+              },
+              slot,
+            );
           const game = useGameStore.getState();
           if (game.screen === 'playing') game.pause();
           else if (game.screen === 'paused') game.resume();

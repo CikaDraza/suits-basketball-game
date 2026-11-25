@@ -61,6 +61,10 @@
     "catchReadyDistance": 1.8,
     "contactSideDeadzone": 0.16,
     "contactReach": 0.55,
+    "importedDefense": {
+      "blendDuration": 0.3,
+      "lowerBlendRate": 12
+    },
     "gait": {
       "startSpeed": 0.18,
       "stopSpeed": 0.08,
@@ -336,6 +340,12 @@
     "period": 0.6,
     "transitionTime": 0.16,
     "crossoverForward": 0.18,
+    "skills": {
+      "period": 0.2,
+      "sideReach": 0.16,
+      "behindForward": -0.5,
+      "doubleFlickWindow": 0.32
+    },
     "turnRate": 14,
     "armBlendRate": 24,
     "postDribble": {
@@ -386,7 +396,40 @@
     "accelTime": 0.4,
     "brakeTime": 0.28
   },
+  "smallJump": {
+    "preparation": 0.24,
+    "launchSpeed": 3.5,
+    "recovery": 0.24,
+    "groundedTolerance": 0.025,
+    "visualFlightDuration": 0.38,
+    "blendDuration": 0.14
+  },
   "defense": {
+    "hands": {
+      "waveRate": 2.5,
+      "waveAmplitude": 0.3,
+      "doubleFlickWindow": 0.35,
+      "pushDuration": 0.72,
+      "pushPreparation": 0.2,
+      "pushExtension": 0.2,
+      "pushReach": 0.12,
+      "pushContactTime": 0.34,
+      "pushContactEnd": 0.55,
+      "pushCooldown": 0.75,
+      "pushRange": 1.3,
+      "pushMinFacing": 0.6,
+      "pushSpeed": 1.8,
+      "pushRecovery": 0.42,
+      "plantedBumpScale": 0.32,
+      "forearmContactTolerance": 0.065,
+      "contactSampleAge": 0.16,
+      "contactSampleTravel": 0.33,
+      "pressureApproachSpeed": 0.55,
+      "bodyContactSkin": 0.04,
+      "braceTorsoHeight": 0.86,
+      "braceLean": 0.5,
+      "braceContactLean": 0.15
+    },
     "guardRange": 3.2,
     "denyBallBias": 0.6,
     "slideSpeed": 0.75

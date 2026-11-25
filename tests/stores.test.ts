@@ -189,3 +189,57 @@ test('inbound requests are owned intents, gated by screen/possession and cleared
   assert.equal(useGameStore.getState().inboundPassRequest, null);
   assert.equal(useGameStore.getState().passType, null);
 });
+
+test('session transitions clear pending inbound and held input, preserve preferences, and restart the active drill', () => {
+  const game = useGameStore.getState();
+  game.choose(0, 'chuck');
+  game.toggleSound();
+  game.requestInboundPass();
+  useInputStore.getState().setAxis(1, -1);
+  useInputStore.getState().setAction('actionA', true);
+  const before = useGameStore.getState();
+  game.startSession({ kind: 'training', drill: 'movement' });
+  const training = useGameStore.getState();
+  assert.deepEqual(training.session, { kind: 'training', drill: 'movement' });
+  assert.equal(training.revision, before.revision + 1);
+  assert.equal(training.legends, before.legends);
+  assert.equal(training.sound, false);
+  assert.equal(training.cpu, false);
+  assert.equal(training.ballState, 'inactive');
+  assert.equal(training.owner, -1);
+  assert.equal(training.inbound, null);
+  assert.equal(training.inboundPassRequest, null);
+  assert.equal(training.inboundRequestSequence, 0);
+  assert.equal(training.phase, 'LIVE');
+  assert.equal(useInputStore.getState().moveX, 0);
+  assert.equal(useInputStore.getState().actionA, false);
+  game.requestInboundAction();
+  assert.equal(useGameStore.getState().inboundPassRequest, null);
+  game.pause();
+  game.resume();
+  assert.equal(useGameStore.getState().revision, training.revision);
+  game.reset();
+  assert.deepEqual(useGameStore.getState().session, training.session);
+  assert.equal(useGameStore.getState().revision, training.revision + 1);
+  game.startSession({ kind: 'duel' });
+  assert.deepEqual(useGameStore.getState().session, { kind: 'duel' });
+  assert.equal(useGameStore.getState().ballState, 'inbound');
+  assert.equal(useGameStore.getState().cpu, true);
+});
+
+test('changing a training character flushes actions and keeps the menu paused', () => {
+  const game = useGameStore.getState();
+  game.startSession({ kind: 'training', drill: 'movement' });
+  game.pause();
+  const before = useGameStore.getState();
+  useInputStore.getState().setAction('actionB', true);
+  game.choose(0, 'chuck');
+  const next = useGameStore.getState();
+  assert.equal(next.screen, 'paused');
+  assert.equal(next.session, before.session);
+  assert.equal(next.revision, before.revision + 1);
+  assert.equal(next.legends[0], 'chuck');
+  assert.equal(next.ballState, 'inactive');
+  assert.equal(next.inbound, null);
+  assert.equal(useInputStore.getState().actionB, false);
+});

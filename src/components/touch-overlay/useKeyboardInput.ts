@@ -1,3 +1,4 @@
+import { motionAudit } from '../../game/diagnostics/motionAudit';
 import { useEffect } from 'react';
 import { useGameStore } from '../../game/state/gameStore';
 import { dispatchGameInput, isEditableTarget } from './inputEvents';
@@ -24,6 +25,23 @@ export function useKeyboardInput() {
     };
     const onKeyDown = (event: KeyboardEvent) => {
       const action = mapped(event.code);
+      if (import.meta.env.DEV && !event.repeat)
+        motionAudit.input('keyboard', {
+          code: event.code,
+          phase: 'down',
+          mappedAction: action,
+          gate: useControlSettingsStore.getState().capturing
+            ? 'binding-capture'
+            : !action
+              ? 'unbound'
+              : action !== 'PAUSE' && isEditableTarget(event.target)
+                ? 'editable-target'
+                : event.ctrlKey || event.metaKey || event.altKey
+                  ? 'modifier'
+                  : action !== 'PAUSE' && useGameStore.getState().screen !== 'playing'
+                    ? 'paused'
+                    : null,
+        });
       if (
         useControlSettingsStore.getState().capturing ||
         !action ||
@@ -41,6 +59,12 @@ export function useKeyboardInput() {
       if (!alreadyPressed) emit(action, 'down');
     };
     const onKeyUp = (event: KeyboardEvent) => {
+      if (import.meta.env.DEV)
+        motionAudit.input('keyboard', {
+          code: event.code,
+          phase: 'up',
+          mappedAction: keysDown.get(event.code) ?? null,
+        });
       const action = keysDown.get(event.code);
       if (!action || !keysDown.delete(event.code)) return;
       event.preventDefault();

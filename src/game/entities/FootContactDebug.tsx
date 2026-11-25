@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { Group, Mesh } from 'three';
 import { useHarnessStore } from '../state/harnessStore';
+import { bodies } from './Duel';
 import { locomotionDebug } from './locomotionDebug';
 
 /**
@@ -24,7 +25,7 @@ export function FootContactDebug() {
           swing = root.current.children[base + 1] as Mesh,
           neutral = root.current.children[base + 2] as Mesh;
         const foot = snapshot?.feet[i];
-        const show = !!foot && !!snapshot?.grounded;
+        const show = !!bodies.players[slot] && !!foot && !!snapshot?.grounded;
         contact.visible = show && foot!.planted;
         swing.visible = show && !foot!.planted;
         neutral.visible = show;

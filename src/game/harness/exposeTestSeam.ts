@@ -1,11 +1,23 @@
+import type { motionRecorder } from '../diagnostics/recorder';
 import type { LocomotionSnapshot } from '../entities/locomotionDebug';
 import { useGameStore } from '../state/gameStore';
 import { useInputStore } from '../state/inputStore';
 import { useHarnessStore } from '../state/harnessStore';
 import type { CharacterPoseSnapshot } from './characterPose';
+import type { DefensiveArmMode } from '../input/defensiveHands';
+import type { RightStickSnapshot } from '../input/rightStickDebug';
+import type { motionAudit } from '../diagnostics/motionAudit';
 
 export type TestSeam = {
+  getGameplayDebug?: (slot: 0 | 1) => ReturnType<typeof motionAudit.view>;
   ready: boolean;
+  diagnostics?: {
+    start: () => void;
+    stop: () => void;
+    export: (recentOnly?: boolean) => ReturnType<typeof motionRecorder.export>;
+    status: typeof motionRecorder.status;
+  };
+  getRightStickDebug?: (slot: 0 | 1) => RightStickSnapshot | null;
   requestInboundPass?: (receiver?: 0 | 1) => void;
   getCharacterPose?: (slot: 0 | 1) => CharacterPoseSnapshot | null;
   getHandContacts?: (slot: 0 | 1) => CharacterPoseSnapshot['hands'];
@@ -14,7 +26,8 @@ export type TestSeam = {
   setHandling?: (slot: 0 | 1, mode: 'hold' | 'dribble', hand: 1 | -1) => void;
   /** Test fixture only: production facing remains owned by gameplay. */
   setFacing?: (slot: 0 | 1, angle: number) => void;
-  inspectCharacter?: (view: 'front' | 'side' | null) => void;
+  inspectCharacter?: (view: 'front' | 'side' | 'rear' | null) => void;
+  setDefensivePose?: (slot: 0 | 1, pose: DefensiveArmMode | null) => void;
   version: string;
   mode: 'dev' | 'test' | 'prod';
   getState: () => Record<string, unknown>;
@@ -26,6 +39,8 @@ export type TestSeam = {
       moveZ: number;
       actionA: boolean;
       actionB: boolean;
+      jump: boolean;
+      inbound: boolean;
       handLeft: boolean;
       handRight: boolean;
       pause: boolean;
@@ -82,6 +97,8 @@ function createDefaultTestSeam(): TestSeam {
       }
       if (input.actionA !== undefined) state.setAction('actionA', input.actionA);
       if (input.actionB !== undefined) state.setAction('actionB', input.actionB);
+      if (input.jump !== undefined) state.setAction('jump', input.jump);
+      if (input.inbound !== undefined) state.setAction('inbound', input.inbound);
       if (input.handLeft !== undefined) state.setAction('handLeft', input.handLeft);
       if (input.handRight !== undefined) state.setAction('handRight', input.handRight);
       if (input.pause !== undefined) state.setAction('pause', input.pause);
@@ -108,6 +125,8 @@ function createDefaultTestSeam(): TestSeam {
       if (flag === 'colliders') harnessStore.getState().setDebugColliders(value);
       if (flag === 'handContacts') harnessStore.getState().setDebugHands(value);
       if (flag === 'footContacts') harnessStore.getState().setDebugFeet(value);
+      if (flag === 'rightStick') harnessStore.getState().setDebugRightStick(value);
+      if (flag === 'gameplay') harnessStore.getState().setDebugRightStick(value);
       if (flag === 'testMode') harnessStore.getState().setTestMode(value);
     },
   };

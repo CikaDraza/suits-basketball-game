@@ -1,3 +1,5 @@
+import { motionRecorder } from '../diagnostics/recorder';
+import { motionAudit } from '../diagnostics/motionAudit';
 import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Vector3 } from 'three';
@@ -9,6 +11,7 @@ import { useHarnessStore } from '../state/harnessStore';
 import { extendTestSeam } from './exposeTestSeam';
 import { readCharacterPose, readHandContacts } from './characterPose';
 import { locomotionDebug } from '../entities/locomotionDebug';
+import { rightStickDebug } from '../input/rightStickDebug';
 
 /** Keep test adapters out of the scene's rendering and simulation components. */
 export function useDuelTestSeam(): void {
@@ -25,10 +28,26 @@ export function useDuelTestSeam(): void {
     const renderedBall = new Vector3();
     const seam = extendTestSeam({
       ready: true,
+      ...(import.meta.env.DEV
+        ? {
+            diagnostics: {
+              start: () => motionRecorder.start(),
+              stop: () => motionRecorder.stop(),
+              export: (recentOnly = false) => motionRecorder.export(recentOnly),
+              status: () => motionRecorder.status(),
+            },
+            getGameplayDebug: (slot: 0 | 1) => structuredClone(motionAudit.view(slot)),
+          }
+        : {}),
+      getRightStickDebug: (slot) => structuredClone(rightStickDebug[slot]),
       getLocomotion: (slot) => structuredClone(locomotionDebug[slot]),
       getHandContacts: (slot) =>
         readHandContacts(scene.getObjectByName(`character-${slot}`) ?? scene),
       inspectCharacter: (view) => useHarnessStore.getState().setInspectionView(view),
+      setDefensivePose: (slot, pose) => {
+        if (useHarnessStore.getState().testMode)
+          useHarnessStore.getState().setDefensivePose(slot, pose, duel.time);
+      },
       setHandling: (slot, mode, hand) => {
         if (!useHarnessStore.getState().testMode || duel.owner !== slot) return;
         if (mode === 'hold') useInputStore.getState().flush();
@@ -58,6 +77,11 @@ export function useDuelTestSeam(): void {
           mass: bodies.players[1]?.mass(),
           linvel: bodies.players[1]?.linvel(),
         },
+        activeBodies: {
+          players: bodies.players.map((body) => body !== null),
+          ball: bodies.ball !== null,
+        },
+        renderedCharacters: [0, 1].filter((slot) => !!scene.getObjectByName(`character-${slot}`)),
         ball: {
           ...duel.ball,
           state: duel.ballState,
@@ -87,6 +111,7 @@ export function useDuelTestSeam(): void {
         dribbles: duel.dribbles,
         violations: duel.violations,
         bumps: duel.bumps,
+        defensePushes: duel.defensePushes,
         shots: duel.shots,
         dunks: duel.dunks,
         smashes: duel.smashes,
@@ -99,8 +124,12 @@ export function useDuelTestSeam(): void {
       }),
       getEntities: () => [
         { id: 'player', type: 'player', position: bodies.players[0]?.translation() },
-        { id: 'opponent', type: 'opponent', position: bodies.players[1]?.translation() },
-        { id: 'ball', type: duel.ballState, position: bodies.ball?.translation() },
+        ...(bodies.players[1]
+          ? [{ id: 'opponent', type: 'opponent', position: bodies.players[1].translation() }]
+          : []),
+        ...(bodies.ball
+          ? [{ id: 'ball', type: duel.ballState, position: bodies.ball.translation() }]
+          : []),
         { id: 'hoop', type: 'static', position: level.hoop },
         { id: 'court', type: 'static', active: true },
       ],
@@ -116,7 +145,13 @@ export function useDuelTestSeam(): void {
       getGrip: (slot) => ({ grip: { ...duel.players[slot].grip }, ball: { ...duel.ball } }),
       press: async (action, frames = 1) => {
         const key =
-          action === 'Q' || action === 'post' || action === 'actionB' ? 'actionB' : 'actionA';
+          action === 'jump' || action === 'JUMP' || action === 'F'
+            ? 'jump'
+            : action === 'inbound' || action === 'INBOUND' || action === 'E'
+              ? 'inbound'
+              : action === 'Q' || action === 'post' || action === 'actionB'
+                ? 'actionB'
+                : 'actionA';
         useInputStore.getState().setAction(key, true);
         try {
           await wait(frames);
@@ -127,6 +162,8 @@ export function useDuelTestSeam(): void {
       },
       step: wait,
       reset: async (seed = 42, scenario) => {
+        useHarnessStore.getState().setDefensivePose(0, null);
+        useHarnessStore.getState().setDefensivePose(1, null);
         useHarnessStore.getState().setSeed(seed);
         useGameStore.getState().reset();
         resetDuel(seed, scenario);

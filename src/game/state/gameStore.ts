@@ -1,3 +1,5 @@
+import { motionRecorder } from '../diagnostics/recorder';
+import { motionAudit } from '../diagnostics/motionAudit';
 import { create } from 'zustand';
 import { config, level, type Legend } from '../data/gameConfig';
 import { INITIAL_MESSAGE } from '../simulation/types';
@@ -9,7 +11,25 @@ export type { GamePhase, HandlingState, InboundState } from '../simulation/hudSn
 export type InboundStage = 'POSITIONING' | 'PASS_WINDOW';
 export type GameScreen = 'playing' | 'paused' | 'gameover' | 'win';
 
+export type GameSession =
+  | { kind: 'duel' }
+  | { kind: 'training'; drill: 'movement' | 'solo' }
+  | { kind: 'training'; drill: 'one-on-one'; role: 'offense' | 'defense' };
+
+export const isSoloPractice = (session: GameSession) =>
+  session.kind === 'training' && session.drill === 'solo';
+export const practiceAttacker = (session: GameSession): PlayerSlot | null =>
+  session.kind === 'training' && session.drill === 'one-on-one'
+    ? session.role === 'offense'
+      ? 0
+      : 1
+    : null;
+export const isFreeMovement = (session: GameSession) =>
+  session.kind === 'training' && session.drill === 'movement';
+
 export interface GameStore extends HudSnapshot {
+  session: GameSession;
+  startSession: (session: GameSession) => void;
   screen: GameScreen;
   health: number;
   maxHealth: number;
@@ -33,23 +53,32 @@ export interface GameStore extends HudSnapshot {
 }
 
 /** Fresh tuples on reset keep previous store snapshots immutable. */
-export function createInitialHudSnapshot(): HudSnapshot {
+export function createInitialHudSnapshot(session: GameSession = { kind: 'duel' }): HudSnapshot {
+  const solo = isSoloPractice(session);
+  const movement = isFreeMovement(session);
   return {
     score: 0,
     cpuScore: 0,
     energies: [config.player.energyMax, config.player.energyMax],
     modes: ['idle', 'idle'],
-    owner: -1,
-    ballState: 'inbound',
+    owner: solo ? 0 : -1,
+    ballState: movement ? 'inactive' : solo ? 'held' : 'inbound',
     charge: 0,
-    message: INITIAL_MESSAGE,
-    cpu: true,
-    phase: 'INBOUND_PHASE',
-    inbound: {
-      stage: 'POSITIONING',
-      remaining: config.inbound.positionTime,
-      owner: level.initialOwner,
-    },
+    message: isFreeMovement(session)
+      ? 'Free Movement · Movement, Defense, Footwork.'
+      : solo
+        ? 'Solo Practice · Dribble and shoot.'
+        : INITIAL_MESSAGE,
+    cpu: !movement && !solo,
+    phase: movement || solo ? 'LIVE' : 'INBOUND_PHASE',
+    inbound:
+      movement || solo
+        ? null
+        : {
+            stage: 'POSITIONING',
+            remaining: config.inbound.positionTime,
+            owner: practiceAttacker(session) ?? level.initialOwner,
+          },
     handling: ['none', 'none'],
     holdProgress: 0,
     passType: null,
@@ -58,13 +87,29 @@ export function createInitialHudSnapshot(): HudSnapshot {
 }
 
 function inboundRequest(state: GameStore, receiver: PlayerSlot, positioning = false) {
+  const auditId = import.meta.env?.DEV
+    ? motionAudit.request(receiver, 'inbound', { positioning })
+    : 0;
   if (
     state.screen !== 'playing' ||
     state.phase !== 'INBOUND_PHASE' ||
     state.inbound?.owner !== receiver
-  )
+  ) {
+    if (import.meta.env?.DEV)
+      motionAudit.decision(
+        receiver,
+        auditId,
+        'inbound',
+        'rejected',
+        'not-inbound-receiver-or-hud-not-ready',
+      );
     return state;
+  }
   const id = state.inboundRequestSequence + 1;
+  if (import.meta.env?.DEV) {
+    motionAudit.decision(receiver, auditId, 'inbound', 'queued');
+    motionAudit.queueInbound(id, auditId, receiver);
+  }
   return {
     inboundPassRequest: positioning ? { id, receiver, positioning: true } : { id, receiver },
     inboundRequestSequence: id,
@@ -73,6 +118,7 @@ function inboundRequest(state: GameStore, receiver: PlayerSlot, positioning = fa
 
 export const useGameStore = create<GameStore>((set, get) => ({
   ...createInitialHudSnapshot(),
+  session: { kind: 'duel' },
   screen: 'playing',
   health: 100,
   maxHealth: 100,
@@ -93,6 +139,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   requestInboundAction: (receiver = 0) => set((state) => inboundRequest(state, receiver, true)),
   setScreen: (screen) => {
     if (get().screen === screen) return;
+    if (import.meta.env?.DEV)
+      motionRecorder.event('session.screen', { from: get().screen, to: screen });
     useInputStore.getState().flush();
     set({ screen, inboundPassRequest: null });
   },
@@ -102,10 +150,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   resume: () => {
     if (get().screen === 'paused') get().setScreen('playing');
   },
-  reset: () => {
+  reset: () => get().startSession(get().session),
+  startSession: (session) => {
     useInputStore.getState().flush();
     set((state) => ({
-      ...createInitialHudSnapshot(),
+      ...createInitialHudSnapshot(session),
+      session: { ...session },
       screen: 'playing',
       health: state.maxHealth,
       lives: 1,
@@ -119,10 +169,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
   choose: (slot, legend) => {
     if ((slot !== 0 && slot !== 1) || get().legends[slot] === legend) return;
+    useInputStore.getState().flush();
     set((state) => {
       const legends: [Legend, Legend] = [...state.legends];
       legends[slot] = legend;
-      return { legends, revision: state.revision + 1 };
+      return {
+        ...createInitialHudSnapshot(state.session),
+        legends,
+        inboundPassRequest: null,
+        inboundRequestSequence: 0,
+        revision: state.revision + 1,
+      };
     });
   },
   toggleSound: () => set((state) => ({ sound: !state.sound })),

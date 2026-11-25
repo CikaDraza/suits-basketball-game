@@ -4,6 +4,7 @@ import { useGameStore } from './game/state/gameStore';
 import { HUD, PauseMenu, GameOver, WinScreen } from './components/game-ui';
 import { TouchOverlay } from './components/touch-overlay';
 import { RotateDevice } from './components/game-ui/RotateDevice';
+import { GameplayDebugOverlay } from './game/harness/GameplayDebugOverlay';
 
 function MatchResult({ won }: { readonly won: boolean }) {
   const finalScore = useGameStore((state) => state.finalScore);
@@ -39,6 +40,7 @@ export default function App() {
         <GameCanvas />
         <GameOverlay />
         <RotateDevice />
+        {import.meta.env.DEV && <GameplayDebugOverlay />}
       </div>
     </div>
   );

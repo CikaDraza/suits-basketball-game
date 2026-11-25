@@ -1,7 +1,27 @@
+import { motionAudit } from '../diagnostics/motionAudit';
+import { motionRecorder } from '../diagnostics/recorder';
 import type { World } from '@dimforge/rapier3d-compat';
 import { COURT, HOOP } from '../court/constants';
 import { syncBallCollision } from '../physics/ballCollision';
-import { protectedBallTarget, stepBallHandling } from '../simulation/ballHandling';
+import {
+  cancelDribbleSkill,
+  protectedBallTarget,
+  requestDribbleSkill,
+  stepBallHandling,
+} from '../simulation/ballHandling';
+import type { Camera } from 'three';
+import { resolveSkillFrame, type HandGesture } from '../input/skillGesture';
+import { rightStickDebug } from '../input/rightStickDebug';
+import { createDefensiveHandInput, hasRaisedDefensiveHands } from '../input/defensiveHands';
+import {
+  defensivePushImpulse,
+  forearmContacts,
+  measuredForearmGap,
+  pushEvidence,
+} from '../simulation/defensivePush';
+import { defensiveStanceYaw } from './defensiveFacing';
+import { movementRequests } from './locomotionDebug';
+import { measureJump, requestSmallJump, stepSmallJump } from '../simulation/smallJump';
 import { createInboundPassController } from '../simulation/inboundPassController';
 import { isOnCourt, type PassPoint } from '../simulation/tacticalPass';
 import { approachVelocity } from '../simulation/movement';
@@ -14,7 +34,7 @@ import { createDuelState } from '../simulation/runtime';
 import { createHudSnapshot } from '../simulation/hudSnapshot';
 import { isSimulationRunning } from '../simulation/isSimulationRunning';
 import type { Fighter, PlayerSlot } from '../simulation/types';
-import { useGameStore } from '../state/gameStore';
+import { isFreeMovement, isSoloPractice, practiceAttacker, useGameStore } from '../state/gameStore';
 import {
   getInputResetVersion,
   takeButtonEdges,
@@ -48,8 +68,8 @@ export type { Fighter, Mode, Handling, InboundStage } from '../simulation/types'
  * Ball states: held | loose | shot | pass | smash | inbound | scored
  * Inbound phase (after a basket, out of bounds or a 5-second violation):
  *   POSITIONING (5 s) — ball sits on the left (near) sideline, nobody can pass, both players
- *                       move and shove for position; Q toggles a sealing stance.
- *   PASS_WINDOW (5 s) — the player in possession presses Q / △ to pass it in; if the clock
+ *                       move and shove for position; Q / △ toggles a sealing stance.
+ *   PASS_WINDOW (5 s) — the player in possession presses E / ✕ / A to pass it in; if the clock
  *                       hits 0 first → 5-second violation, possession flips, new inbound.
  * Ball handling:
  *   On every catch/recovery the ball is HELD with both hands at the chest (no dribble).
@@ -57,21 +77,43 @@ export type { Fighter, Mode, Handling, InboundStage } from '../simulation/types'
  *   Keep a direction pressed beyond the short tap window = start dribbling and moving.
  */
 export const duel = createDuelState(['shaq', 'chuck']);
+const freeMovement = () => isFreeMovement(useGameStore.getState().session);
+const soloPractice = () => isSoloPractice(useGameStore.getState().session);
+const fixedAttacker = () => practiceAttacker(useGameStore.getState().session);
 const inputContext = (slot: number) =>
+  !freeMovement() &&
   (duel.ballState === 'inbound' || duel.ballState === 'pass' ? duel.inboundOwner : duel.owner) ===
-  slot
+    slot
     ? ('offense' as const)
     : ('defense' as const);
 setControlContextReader(inputContext);
 const padGate = createPadGate();
 const cameraRise = c.camera.height - c.camera.target[1];
 const skillVerticalScale = cameraRise / Math.hypot(c.camera.horizontalDistance, cameraRise);
-export const skillInputs = [0, 1].map(() =>
-  createDribbleSkillBuffer(c.camera.inputAngle, skillVerticalScale),
+export const skillInputs = [0, 1].map((slot) =>
+  createDribbleSkillBuffer(
+    c.camera.inputAngle,
+    skillVerticalScale,
+    c.ballControl.skills.doubleFlickWindow,
+    import.meta.env?.DEV
+      ? (event) => {
+          if (inputContext(slot) === 'offense' || event.stage === 'cancelled')
+            motionAudit.gesture(slot, 'offense', event);
+        }
+      : undefined,
+  ),
+);
+const defensiveInputs = [0, 1].map((slot) =>
+  createDefensiveHandInput(
+    c.defense.hands.doubleFlickWindow,
+    import.meta.env?.DEV ? (event) => motionAudit.gesture(slot, 'defense', event) : undefined,
+  ),
 );
 
 /** Observe skill edges before Rapier; a release in a render frame cannot erase a pending command. */
-export function sampleDuelSkillInput() {
+export function sampleDuelSkillInput(frame?: { camera: Camera }) {
+  if (duel.revision !== useGameStore.getState().revision)
+    resetDuel(useHarnessStore.getState().seed);
   const settings = useControlSettingsStore.getState();
   const pads = navigator.getGamepads?.() ?? [];
   const version = getInputResetVersion();
@@ -86,25 +128,161 @@ export function sampleDuelSkillInput() {
       neutral,
     );
     const player = duel.players[slot];
+    const enabled =
+      allowed && (!freeMovement() || slot === 0) && isSimulationRunning() && !settings.capturing;
+    const cameraAngle = frame
+      ? Math.atan2(frame.camera.matrixWorld.elements[8], frame.camera.matrixWorld.elements[10])
+      : c.camera.inputAngle;
+    const verticalScale = frame
+      ? Math.abs(frame.camera.matrixWorld.elements[9])
+      : skillVerticalScale;
+    const defenseEnabled =
+      enabled &&
+      inputContext(slot) === 'defense' &&
+      player.mode !== 'down' &&
+      player.mode !== 'stun' &&
+      player.mode !== 'dunk';
+    if (import.meta.env?.DEV && (!freeMovement() || slot === 0)) {
+      const gate = !pad
+        ? 'no-gamepad'
+        : !isSimulationRunning()
+          ? 'paused-or-frozen'
+          : settings.capturing
+            ? 'binding-capture'
+            : !allowed
+              ? 'neutral-required'
+              : null;
+      const observed = readGamepadInput(
+        pad,
+        settings.profile[inputContext(slot)],
+        settings.profile.deadzone,
+        neutral,
+      );
+      const opponent = freeMovement() ? null : duel.players[1 - slot];
+      motionAudit.physicalPad(
+        slot,
+        pad,
+        {
+          ...observed,
+          resolvedFrame: resolveSkillFrame(
+            observed.skill,
+            player.angle,
+            cameraAngle,
+            verticalScale,
+          ),
+          camera: { yaw: cameraAngle, verticalScale },
+          context: inputContext(slot),
+          facing: player.angle,
+          opponentDirection: opponent
+            ? {
+                world: Math.atan2(opponent.x - player.x, opponent.z - player.z),
+                relative: Math.atan2(
+                  Math.sin(Math.atan2(opponent.x - player.x, opponent.z - player.z) - player.angle),
+                  Math.cos(Math.atan2(opponent.x - player.x, opponent.z - player.z) - player.angle),
+                ),
+              }
+            : null,
+        },
+        gate,
+      );
+    }
+    player.defenseHands = defensiveInputs[slot].sample({
+      device: pad ? JSON.stringify([pad.id, pad.index, pad.axes.length]) : null,
+      version,
+      enabled: defenseEnabled,
+      time: duel.time,
+      vector: mapped.skill,
+      facing: player.angle,
+      cameraAngle,
+      verticalScale,
+    });
+    if (!defenseEnabled) player.defensePushAt = -10;
+    const eligible =
+      duel.owner === slot &&
+      duel.ballState === 'held' &&
+      player.charge === 0 &&
+      player.mode !== 'down' &&
+      player.mode !== 'stun' &&
+      player.mode !== 'dunk';
     skillInputs[slot].sample({
       device: pad ? JSON.stringify([pad.id, pad.index, pad.axes.length]) : null,
       version,
       vector: mapped.skill,
       hand: mapped.hand,
       facing: player.angle,
-      enabled: allowed && isSimulationRunning() && !settings.capturing,
-      eligible:
-        duel.owner === slot &&
-        duel.ballState === 'held' &&
-        player.charge === 0 &&
-        player.mode !== 'down' &&
-        player.mode !== 'stun' &&
-        player.mode !== 'dunk',
+      time: duel.time,
+      cameraAngle,
+      verticalScale,
+      enabled,
+      eligible,
+      ineligibleReason:
+        duel.owner !== slot
+          ? 'not-ball-owner'
+          : duel.ballState !== 'held'
+            ? 'ball-not-held'
+            : player.charge > 0
+              ? 'shot-charging'
+              : `mode-${player.mode}`,
       crossing:
         duel.ballControl.owner === slot &&
         duel.ballControl.mode === 'dribble' &&
-        duel.ballControl.crossing,
+        (duel.ballControl.crossing || duel.ballControl.skill !== null),
+      crossingKind: duel.ballControl.owner === slot ? duel.ballControl.skill?.kind : null,
     });
+    if (import.meta.env?.DEV || useHarnessStore.getState().testMode) {
+      const resolved = resolveSkillFrame(mapped.skill, player.angle, cameraAngle, verticalScale);
+      const screenForward = resolved?.screenForward ??
+        resolveSkillFrame({ x: 1, z: 0 }, player.angle, cameraAngle, verticalScale)
+          ?.screenForward ?? { x: 0, z: 0 };
+      const context = inputContext(slot),
+        binding = settings.profile[context].gamepad;
+      const defense = defensiveInputs[slot].debug,
+        offense = skillInputs[slot];
+      rightStickDebug[slot] = {
+        slot,
+        legend: player.legend,
+        context,
+        time: duel.time,
+        device: pad?.id ?? null,
+        enabled,
+        eligible: context === 'defense' ? defenseEnabled : eligible,
+        rawAxes: { axis2: pad?.axes[2] ?? 0, axis3: pad?.axes[3] ?? 0 },
+        bindings: {
+          left: binding.SKILL_LEFT,
+          right: binding.SKILL_RIGHT,
+          up: binding.SKILL_UP,
+          down: binding.SKILL_DOWN,
+        },
+        calibrated: mapped.skillRaw,
+        processed: mapped.skill,
+        normalized: resolved?.normalized ?? { x: 0, z: 0 },
+        screenForward,
+        bodyRelative: resolved?.body ?? { left: 0, forward: 0 },
+        resolved: resolved?.kind ?? null,
+        anatomicalHand: resolved?.hand ?? null,
+        selected:
+          context === 'defense'
+            ? player.defenseHands
+            : !offense.armed && eligible
+              ? (offense.debug.accepted?.kind ?? 'none')
+              : 'none',
+        executing:
+          duel.ballControl.owner === slot ? (duel.ballControl.skill?.kind ?? 'none') : 'none',
+        phase: context === 'defense' ? defense.phase : offense.phase,
+        accepted: context === 'defense' ? defense.last : offense.debug.accepted,
+        lockedFacing:
+          context === 'defense'
+            ? defense.facing
+            : offense.armed
+              ? null
+              : (offense.debug.accepted?.facing ?? null),
+        bodyFacing: player.angle,
+        cameraYaw: cameraAngle,
+        cameraPitch: Math.asin(Math.min(1, verticalScale)),
+        cameraPitchScale: verticalScale,
+        movementYaw: c.camera.inputAngle,
+      };
+    }
   }
 }
 export const bodies: {
@@ -175,6 +353,7 @@ const rampTarget = { x: 0, z: 0 },
  * - on-ball: square up to the ball handler inside `guardRange`.
  */
 function defensiveFacing(i: number): number | null {
+  if (!bodies.players[1 - i]) return null;
   const p = duel.players[i],
     o = duel.players[1 - i];
   if ((duel.ballState === 'inbound' || duel.ballState === 'pass') && i !== duel.inboundOwner) {
@@ -187,10 +366,37 @@ function defensiveFacing(i: number): number | null {
     const bias = c.defense.denyBallBias;
     return Math.atan2(toX / toL + (bX / bL) * bias, toZ / toL + (bZ / bL) * bias);
   }
-  if (duel.ballState === 'held' && duel.owner === 1 - i && dist(p, o) < c.defense.guardRange)
+  if (
+    !p.defenseReleased &&
+    duel.ballState === 'held' &&
+    duel.owner === 1 - i &&
+    dist(p, o) < c.defense.guardRange
+  )
     return facing(p, o.x, o.z);
   return null;
 }
+/** Off-ball low stance against the current ball handler, distinct from an offensive post-up. */
+function isLowDefender(slot: number) {
+  return duel.players[slot].mode === 'post' && duel.ballState === 'held' && duel.owner === 1 - slot;
+}
+
+function currentForearmGap(slot: number, mode: 'brace' | 'push') {
+  const actor = bodies.players[slot]?.translation();
+  const opponent = bodies.players[1 - slot]?.translation();
+  if (!actor || !opponent) return null;
+  return measuredForearmGap(
+    forearmContacts[slot],
+    duel.time,
+    {
+      ...actor,
+      y: actor.y - c.physics.halfHeight - c.physics.radius,
+      angle: duel.players[slot].angle,
+    },
+    { ...duel.players[1 - slot], ...opponent },
+    mode,
+  );
+}
+
 /** Translate the last rendered hand offset by the body's exact current physics position. */
 function receiverCatchTarget(slot: PlayerSlot): PassPoint {
   const p = duel.players[slot];
@@ -199,12 +405,20 @@ function receiverCatchTarget(slot: PlayerSlot): PassPoint {
 }
 // ---------------------------------------------------------------- possession
 /** Catch / recovery: the ball is locked to the chest with both hands — no dribble yet. */
-function gain(i: number) {
+function gain(i: number, reason = 'catch-or-recovery') {
+  const attacker = fixedAttacker();
+  if (attacker !== null && i !== attacker) {
+    inbound(attacker, 'practice-reset');
+    return;
+  }
+  if (import.meta.env?.DEV)
+    motionRecorder.event('possession.gained', { previousOwner: duel.owner }, { slot: i, reason });
   const p = duel.players[i];
   if (i === 0) takeReleasedMovements();
   duel.owner = i;
   duel.ballState = 'held';
   duel.ballControl.owner = -1;
+  cancelDribbleSkill(duel.ballControl);
   duel.lastTouch = i;
   p.handling = 'hold';
   cancelHeldMovement(p);
@@ -221,11 +435,19 @@ function gain(i: number) {
   syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   sound('dribble');
 }
-function loose(i: number) {
+function loose(i: number, reason = 'gameplay-release') {
+  if (import.meta.env?.DEV)
+    motionRecorder.event('possession.lost', { previousOwner: duel.owner }, { slot: i, reason });
+  const attacker = fixedAttacker();
+  if (attacker !== null) {
+    inbound(attacker, 'practice-reset');
+    return;
+  }
   const p = duel.players[i];
   duel.lastTouch = i;
   duel.owner = -1;
   duel.ballState = 'loose';
+  cancelDribbleSkill(duel.ballControl);
   syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   duel.looseTimer = c.ball.pickupDelay;
   bodies.ball?.setGravityScale(1, true);
@@ -240,9 +462,18 @@ function loose(i: number) {
   p.charge = 0;
   p.mode = 'idle';
 }
-type InboundReason = 'start' | 'score' | 'oob' | 'violation';
+type InboundReason = 'start' | 'score' | 'oob' | 'violation' | 'practice-reset';
 /** Ball to the left-sideline spot; POSITIONING starts, then the PASS_WINDOW. */
 function inbound(owner: number, reason: InboundReason) {
+  if (soloPractice()) {
+    gain(0, 'solo-restart');
+    sound('whistle');
+    say('Next shot. Your ball.');
+    return;
+  }
+  const attacker = fixedAttacker();
+  owner = attacker ?? owner;
+  if (attacker !== null) duel.inboundPass = null;
   duel.owner = -1;
   duel.inboundOwner = owner;
   duel.ballState = 'inbound';
@@ -250,7 +481,7 @@ function inbound(owner: number, reason: InboundReason) {
   duel.inboundClock = c.inbound.positionTime;
   // CPU inbounder decides when it will pass; now and then it dawdles into a violation
   duel.aiPassAt =
-    random() < c.inbound.aiLateChance
+    attacker === null && random() < c.inbound.aiLateChance
       ? c.inbound.passWindow + 1
       : c.inbound.aiPassMin + random() * (c.inbound.aiPassMax - c.inbound.aiPassMin);
   duel.players.forEach((p) => {
@@ -270,9 +501,13 @@ function inbound(owner: number, reason: InboundReason) {
     },
     true,
   );
+  if (import.meta.env?.DEV)
+    motionRecorder.event('inbound.started', { owner, reason, clock: duel.inboundClock });
   const who = owner === 0 ? 'Your' : 'CPU';
   if (reason === 'oob') say(`Out of bounds. ${who} ball — fight for position.`);
   else if (reason === 'violation') say(`5-SECOND VIOLATION. ${who} ball now.`);
+  else if (reason === 'practice-reset')
+    say(`Next attempt. ${owner === 0 ? 'Your' : 'CPU'} ball from the sideline.`);
   else if (reason === 'score') say(`${who} inbound. Five seconds to get open.`);
   else say(`${who} inbound. Get open.`);
   sound('whistle');
@@ -286,7 +521,8 @@ const inboundPassController = createInboundPassController({
   getCatchTarget: receiverCatchTarget,
   onPossession: (slot, intercepted) => {
     if (intercepted) duel.interceptions++;
-    gain(slot);
+    gain(slot, intercepted ? 'interception' : 'inbound-catch');
+    if (intercepted && fixedAttacker() !== null) return;
     say(
       intercepted ? 'INTERCEPTED. Read the passing lane.' : 'Caught. Two hands, chest high.',
       slot,
@@ -301,6 +537,10 @@ const inboundPassController = createInboundPassController({
 /** Runs after each actual Rapier substep, before another step can overwrite the contact. */
 export function afterDuelPhysicsStep(world: World): void {
   if (!isSimulationRunning()) return;
+  if (freeMovement()) {
+    if (import.meta.env?.DEV) motionAudit.physics(world, duel, bodies);
+    return;
+  }
   inboundPassController.afterPhysicsStep(world);
   const point = bodies.ball?.translation();
   if (point) {
@@ -316,6 +556,7 @@ export function afterDuelPhysicsStep(world: World): void {
     duel.ball.y = point.y;
     duel.ball.z = point.z;
   }
+  if (import.meta.env?.DEV) motionAudit.physics(world, duel, bodies);
 }
 /** Jab step: quick fake on the pivot foot. A nearby CPU defender may bite on it. */
 function jab(i: number, wx: number, wz: number) {
@@ -353,11 +594,12 @@ function flop(i: number) {
   const p = duel.players[i];
   if (p.cooldown > 0 || p.mode === 'down') return;
   p.mode = 'down';
+  p.fallBackward = true;
   p.timer = c.player.downDuration;
   p.energy = Math.max(0, p.energy - c.player.flopCost);
   p.charge = 0;
   duel.flops++;
-  if (duel.owner === i) loose(i);
+  if (duel.owner === i) loose(i, 'flop');
   p.mode = 'down';
   impact(p, true);
   say(i === 0 ? 'Taking a business trip.' : 'Chuck: “I meant to do that.”', i);
@@ -365,7 +607,7 @@ function flop(i: number) {
 function smash(i: number) {
   const p = duel.players[i],
     o = duel.players[1 - i];
-  if (duel.owner !== i || dist(p, o) > c.ball.smashRange) return;
+  if (!bodies.players[1 - i] || duel.owner !== i || dist(p, o) > c.ball.smashRange) return;
   duel.smashes++;
   p.energy = Math.max(0, p.energy - c.player.smashCost);
   p.charge = 0;
@@ -399,7 +641,9 @@ function shoot(i: number) {
   const distance = dist(p, rim),
     perfect = Math.abs(p.charge - c.shots.perfectTime) <= c.shots.perfectWindow;
   const dunk = distance < c.shots.dunkRange && p.energy > c.shots.dunkEnergy;
-  const contest = o.mode === 'contest' && dist(p, o) < c.ai.contestRange;
+  const contest =
+    (o.mode === 'contest' || hasRaisedDefensiveHands(o.defenseHands)) &&
+    dist(p, o) < c.ai.contestRange;
   const stat = c.player[p.legend];
   let accuracy =
     (c.shots.baseAccuracy +
@@ -467,11 +711,26 @@ function shoot(i: number) {
 // ---------------------------------------------------------------- reset
 export function resetDuel(seed = 42, scenario?: string) {
   const state = useGameStore.getState();
+  if (import.meta.env?.DEV) motionRecorder.event('session.reset', { nextRevision: state.revision });
   Object.assign(
     duel,
-    createDuelState(state.legends, seed, state.revision, scenario === 'live' ? 'live' : 'inbound'),
+    createDuelState(
+      state.legends,
+      seed,
+      state.revision,
+      freeMovement() ? 'movement' : soloPractice() || scenario === 'live' ? 'live' : 'inbound',
+    ),
   );
   duel.lastInboundRequestId = state.inboundRequestSequence;
+  skillInputs.forEach((input) => input.reset());
+  defensiveInputs.forEach((input) => input.reset());
+  rightStickDebug.fill(null);
+  forearmContacts.fill(null);
+  pushEvidence.fill(null);
+  movementRequests.fill(null);
+  if (freeMovement()) {
+    duel.message = 'Free Movement · Movement, Defense, Footwork.';
+  }
   syncBallCollision(bodies.ball, duel.ballState, BALL_CLEARANCE);
   resetHoop();
   bodies.players.forEach((body, slot) => {
@@ -512,13 +771,18 @@ export function resetDuel(seed = 42, scenario?: string) {
   );
   bodies.ball?.setGravityScale(0, true);
   useInputStore.getState().flush();
-  if (scenario !== 'live') inbound(level.initialOwner, 'start');
-  if (scenario === 'inbound-cpu') inbound(1, 'start');
+  if (soloPractice()) duel.message = 'Solo Practice · Dribble and shoot.';
+  else if (!freeMovement()) {
+    if (fixedAttacker() !== null || scenario !== 'live')
+      inbound(scenario === 'inbound-cpu' ? 1 : level.initialOwner, 'start');
+  }
   useGameStore.setState((previous) => ({
-    ...createHudSnapshot(duel, previous, HUD_SETTINGS),
-    screen: 'playing',
+    ...createHudSnapshot(duel, previous, HUD_SETTINGS, !!bodies.players[1]),
+    screen: state.screen,
     finalScore: 0,
   }));
+  if (import.meta.env?.DEV)
+    motionAudit.begin(duel, state.session, useControlSettingsStore.getState().profile, bodies);
 }
 // ---------------------------------------------------------------- input (human / gamepad / CPU)
 type Input = {
@@ -526,6 +790,14 @@ type Input = {
   z: number;
   q: boolean;
   r: boolean;
+  chargeStance?: boolean;
+  chargePresses?: number;
+  jump?: boolean;
+  jumpPressed?: boolean;
+  inbound?: boolean;
+  inboundPressed?: boolean;
+  skill?: HandGesture | null;
+  defensePush?: { facing: number; time: number } | null;
   heldFor?: number;
   releases?: readonly ReleasedMovement[];
   hand?: number;
@@ -547,7 +819,8 @@ function controls(i: number, dt: number): Input {
     settings.profile.deadzone,
     neutral,
   );
-  const padHand = skillInputs[i].take()?.hand ?? 0;
+  const padSkill = skillInputs[i].take();
+  const defensePush = defensiveInputs[i].takePush(duel.time);
   if (i === 0) {
     let x = input.moveX + mapped.x,
       z = input.moveZ + mapped.z;
@@ -561,13 +834,21 @@ function controls(i: number, dt: number): Input {
       if (edge.active && (edge.action === 'handLeft' || edge.action === 'handRight'))
         edgeHand = edge.action === 'handLeft' ? 1 : -1;
     // Explicit key/touch edges take priority if two devices issue a command in the same tick.
-    const hand = edgeHand || padHand;
+    const hand = edgeHand;
     return {
       x,
       z,
       q: input.actionB || mapped.q,
       r: input.actionA || mapped.r,
+      chargeStance: input.chargeStance || mapped.chargeStance,
+      chargePresses: edges.filter((e) => e.action === 'chargeStance' && e.active).length,
+      jump: input.jump || mapped.jump,
+      jumpPressed: edges.some((e) => e.action === 'jump' && e.active),
+      inbound: input.inbound || mapped.inbound,
+      inboundPressed: edges.some((e) => e.action === 'inbound' && e.active),
       hand,
+      skill: edgeHand ? null : padSkill,
+      defensePush,
       qPressed: edges.some((e) => e.action === 'actionB' && e.active),
       rPressed: edges.some((e) => e.action === 'actionA' && e.active),
       rReleased: edges.some((e) => e.action === 'actionA' && !e.active) && !mapped.r,
@@ -575,20 +856,25 @@ function controls(i: number, dt: number): Input {
       releases,
     };
   }
+  if (fixedAttacker() !== null && !useHarnessStore.getState().testMode) return cpu(i, dt);
   if (
     pad &&
     (Math.hypot(mapped.x, mapped.z) > 0 ||
       mapped.q ||
       mapped.r ||
+      mapped.chargeStance ||
+      mapped.jump ||
+      mapped.inbound ||
       mapped.hand ||
-      padHand ||
+      padSkill ||
+      defensePush ||
       Math.hypot(mapped.skill.x, mapped.skill.z) > 0)
   )
     duel.p2Human = true;
   if (!pad && duel.p2Human) {
     duel.p2Human = false;
   }
-  if (duel.p2Human) return { ...mapped, hand: padHand };
+  if (duel.p2Human) return { ...mapped, hand: 0, skill: padSkill, defensePush };
   if (useHarnessStore.getState().testMode) return { x: 0, z: 0, q: false, r: false };
   return cpu(i, dt);
 }
@@ -601,10 +887,12 @@ function cpu(i: number, dt: number): Input {
   let tz: number;
   let r = false;
   let q = false;
+  let inbound = false;
   const toward = (x: number, z: number): Input => ({
     ...worldToStick(x - p.x, z - p.z, c.ai.pursuitDeadzone),
     q,
     r,
+    inbound,
   });
   if (p.mode === 'down')
     return {
@@ -627,11 +915,11 @@ function cpu(i: number, dt: number): Input {
       const side = Math.sign(p.x - o.x) || 1;
       tx = spot.x + side * c.inbound.getOpenSpread;
       tz = spot.z - c.inbound.getOpenDistance;
-      q =
+      q = duel.inboundStage === 'position' && p.mode !== 'post';
+      inbound =
         useGameStore.getState().phase === 'INBOUND_PHASE' &&
-        (duel.inboundStage === 'position'
-          ? p.mode !== 'post'
-          : c.inbound.passWindow - duel.inboundClock >= duel.aiPassAt);
+        duel.inboundStage === 'pass' &&
+        c.inbound.passWindow - duel.inboundClock >= duel.aiPassAt;
       return toward(tx, tz);
     }
     const rcv = duel.players[duel.inboundOwner];
@@ -709,7 +997,9 @@ function cpu(i: number, dt: number): Input {
     const d = dist(o, rim) || 1;
     tx = o.x + ((rim.x - o.x) / d) * c.ai.defenseDistance;
     tz = o.z + ((rim.z - o.z) / d) * c.ai.defenseDistance;
-    r = o.charge > 0 && dist(p, o) < c.ai.contestRange;
+    r =
+      (o.charge > 0 && dist(p, o) < c.ai.contestRange) ||
+      (fixedAttacker() === 0 && o.handling === 'dribble' && dist(p, o) < c.ai.stealRange);
     if (
       p.flopClock > c.ai.flopInterval &&
       dist(p, o) < c.player.tripDistance &&
@@ -733,6 +1023,7 @@ export function tickDuel(delta: number) {
   if (!isSimulationRunning()) return;
   if (duel.revision !== useGameStore.getState().revision)
     resetDuel(useHarnessStore.getState().seed);
+  if (import.meta.env?.DEV) motionAudit.beginTick();
   const dt = Math.min(delta, 3 / c.physics.timestep);
   duel.time += dt;
   duel.rim *= Math.exp(-c.effects.rimDecay * dt);
@@ -749,20 +1040,31 @@ export function tickDuel(delta: number) {
     const b = bodies.players[i];
     if (!b) return;
     const input = controls(i, dt);
+    if (import.meta.env?.DEV)
+      motionAudit.resolvedInput(i, input, i === 1 && !duel.p2Human ? 'cpu' : 'human');
     const resetVersion = getInputResetVersion();
     if (p.inputResetVersion !== resetVersion) {
       cancelHeldMovement(p);
       p.charge = 0;
-      p.prevQ = p.prevR = false;
+      p.prevQ = p.prevR = p.prevInbound = false;
+      p.prevJump = false;
+      if (duel.ballControl.owner === i) {
+        cancelDribbleSkill(duel.ballControl);
+        p.hand = duel.ballControl.hand;
+      }
       p.prevX = 0;
       p.taps = 0;
-      p.lastQ = p.lastR = -99;
+      p.lastChargePress = -Infinity;
+      p.lastR = -99;
+      p.prevChargeStance = false;
       p.interceptUntil = 0;
+      p.defensePushAt = -10;
       if (p.mode === 'contest') p.mode = 'idle';
       p.inputResetVersion = resetVersion;
     }
     const qDown = (input.q && !p.prevQ) || input.qPressed,
       rDown = (input.r && !p.prevR) || input.rPressed,
+      inboundDown = (input.inbound && !p.prevInbound) || input.inboundPressed,
       rUp = (!input.r && p.prevR) || input.rReleased;
     const o = duel.players[1 - i];
     p.timer = Math.max(0, p.timer - dt);
@@ -787,14 +1089,124 @@ export function tickDuel(delta: number) {
       }
     } else if (p.mode === 'stun' && p.timer <= 0) p.mode = 'idle';
     else if ((p.mode === 'shoot' || p.mode === 'dunk') && p.timer <= 0) p.mode = 'idle';
+    measureJump(p.jump, b.translation().y, b.linvel().y);
+    if (p.mode !== 'down') p.fallBackward = false;
+    const chargePresses = Math.max(
+      input.chargePresses ?? 0,
+      Number(Boolean(input.chargeStance) && !p.prevChargeStance),
+    );
+    if (
+      chargePresses &&
+      p.jump.grounded &&
+      duel.time >= p.staggerUntil &&
+      (p.mode === 'idle' || p.mode === 'post' || p.mode === 'contest')
+    ) {
+      if (chargePresses > 1 || duel.time - p.lastChargePress <= c.player.doubleTapWindow) {
+        p.lastChargePress = -Infinity;
+        flop(i);
+      } else p.lastChargePress = duel.time;
+    }
+    p.prevChargeStance = Boolean(input.chargeStance);
+    p.chargeStance =
+      Boolean(input.chargeStance) &&
+      duel.owner !== i &&
+      duel.time >= p.staggerUntil &&
+      p.jump.grounded &&
+      p.jump.phase === 'grounded' &&
+      (p.mode === 'idle' || p.mode === 'post' || p.mode === 'contest');
+    const staggering = duel.time < p.staggerUntil;
     const disabled = p.mode === 'down' || p.mode === 'stun' || p.mode === 'dunk';
+    const jumpAllowed =
+      !disabled &&
+      !p.chargeStance &&
+      !staggering &&
+      p.mode !== 'shoot' &&
+      p.mode !== 'spin' &&
+      p.charge === 0;
+    if ((input.jump && !p.prevJump) || input.jumpPressed) {
+      const id = import.meta.env?.DEV ? motionAudit.request(i, 'jump') : 0;
+      const accepted = requestSmallJump(p.jump, jumpAllowed);
+      if (accepted) p.jump.commandId = id;
+      if (import.meta.env?.DEV)
+        motionAudit.decision(
+          i,
+          id,
+          'jump',
+          accepted ? 'accepted' : 'rejected',
+          p.jump.reason || undefined,
+        );
+    }
+    if (stepSmallJump(p.jump, dt, jumpAllowed)) {
+      b.setLinvel({ x: b.linvel().x, y: c.smallJump.launchSpeed, z: b.linvel().z }, true);
+      if (import.meta.env?.DEV)
+        motionAudit.executed(i, p.jump.commandId, 'jump', {
+          evidence: 'vertical-velocity-applied',
+          verticalVelocity: b.linvel().y,
+        });
+    }
     const owner = duel.owner === i && duel.ballState === 'held';
-    if (!disabled) {
+    if (import.meta.env?.DEV && disabled) {
+      for (const [pressed, action] of [
+        [qDown, 'stance'],
+        [rDown, 'primary'],
+        [inboundDown, 'inbound'],
+        [!!input.hand, 'hand_change'],
+      ] as const) {
+        if (!pressed) continue;
+        const id = motionAudit.request(i, action);
+        motionAudit.decision(i, id, action, 'rejected', `mode-${p.mode}`);
+      }
+    }
+    if (!disabled && !p.chargeStance && !staggering) {
+      if (
+        !owner &&
+        input.defensePush &&
+        duel.time >= p.defensePushCooldown &&
+        inputContext(i) === 'defense'
+      ) {
+        p.defensePushAt = duel.time;
+        p.defensePushApplied = false;
+        p.defensePushCooldown = duel.time + c.defense.hands.pushCooldown;
+        if (import.meta.env?.DEV)
+          pushEvidence[i] = {
+            requestedAt: duel.time,
+            gestureAccepted: true,
+            animationPerformed: false,
+            withinRange: false,
+            contactEstablished: false,
+            impulseApplied: false,
+            target: bodies.players[1 - i] ? 1 - i : null,
+            origin: null,
+            displacement: 0,
+            velocityBefore: null,
+            measuredVelocity: null,
+            requestedDeltaVelocity: null,
+          };
+        if (import.meta.env?.DEV) {
+          const command = motionAudit.handCommand(i);
+          if (command)
+            motionAudit.executed(i, command.commandId, command.action, {
+              stage: 'push-preparation',
+            });
+        }
+      }
+      if (
+        import.meta.env?.DEV &&
+        input.defensePush &&
+        duel.time < p.defensePushCooldown &&
+        p.defensePushAt !== duel.time
+      ) {
+        const command = motionAudit.handCommand(i);
+        if (command)
+          motionAudit.decision(i, command.commandId, command.action, 'rejected', 'push-cooldown');
+      }
+      if (inboundDown) {
+        useGameStore.getState().requestInboundPass(i as PlayerSlot);
+      }
       if (qDown) {
-        if (duel.ballState === 'inbound' && i === duel.inboundOwner) {
-          useGameStore.getState().requestInboundAction(i as PlayerSlot);
-        } else if (duel.time - p.lastQ < c.player.doubleTapWindow) flop(i);
-        else if (
+        const auditId = import.meta.env?.DEV ? motionAudit.request(i, 'stance_or_special') : 0;
+        const auditMode = p.mode;
+        if (
           owner &&
           p.mode === 'post' &&
           Math.abs(input.x) > c.player.minMove &&
@@ -811,15 +1223,43 @@ export function tickDuel(delta: number) {
           impact(p);
         } else {
           p.mode = p.mode === 'post' ? 'idle' : 'post';
+          if (!owner) {
+            p.defenseReleased = p.mode === 'idle';
+            if (p.defenseReleased) {
+              p.defenseHands = 'none';
+              p.defensePushAt = -10;
+              defensiveInputs[i].reset();
+            }
+          }
           sound('post');
           say(
             i === 0 ? 'Back down. Business is personal.' : 'Chuck: “You cannot move this office.”',
             i,
           );
         }
-        p.lastQ = duel.time;
+        if (import.meta.env?.DEV) {
+          const changed = p.mode !== auditMode;
+          motionAudit.decision(
+            i,
+            auditId,
+            'stance_or_special',
+            changed ? 'accepted' : 'rejected',
+            changed ? undefined : 'cooldown-or-already-active',
+          );
+          if (changed) motionAudit.executed(i, auditId, 'stance_or_special', { mode: p.mode });
+        }
       }
       if (rDown) {
+        const auditAction =
+          duel.time - p.lastR < c.player.smashTapWindow && p.taps + 1 >= 3
+            ? 'smash'
+            : owner
+              ? 'shoot_charge'
+              : duel.ballState === 'pass'
+                ? 'intercept_window'
+                : 'contest';
+        const auditId = import.meta.env?.DEV ? motionAudit.request(i, auditAction) : 0;
+        const previousSmashes = duel.smashes;
         p.interceptUntil = duel.time + c.inbound.passing.interceptWindow;
         p.taps = duel.time - p.lastR < c.player.smashTapWindow ? p.taps + 1 : 1;
         p.lastR = duel.time;
@@ -827,6 +1267,19 @@ export function tickDuel(delta: number) {
           smash(i);
           p.taps = 0;
         } else if (duel.owner === i) p.charge = 0;
+        if (import.meta.env?.DEV) {
+          const accepted = auditAction !== 'smash' || duel.smashes > previousSmashes;
+          motionAudit.decision(
+            i,
+            auditId,
+            auditAction,
+            accepted ? 'accepted' : 'rejected',
+            accepted ? undefined : duel.owner !== i ? 'not-ball-owner' : 'out-of-range',
+          );
+          // Charge/contest are measured after this tick actually changes them.
+          if (accepted && (auditAction === 'smash' || auditAction === 'intercept_window'))
+            motionAudit.executed(i, auditId, auditAction, { evidence: auditAction });
+        }
       }
       if (input.r && owner && p.taps < 3) p.charge = Math.min(c.shots.raiseDuration, p.charge + dt);
       else if (input.r && duel.owner !== i) {
@@ -834,20 +1287,85 @@ export function tickDuel(delta: number) {
         p.mode = 'contest';
       }
       if (rUp) {
+        if (import.meta.env?.DEV) {
+          motionAudit.end(i, 'shoot_charge');
+          motionAudit.end(i, 'contest');
+          motionAudit.end(i, 'intercept_window');
+        }
+        if (import.meta.env?.DEV && owner) {
+          const id = motionAudit.request(i, 'shoot_release');
+          motionAudit.decision(
+            i,
+            id,
+            'shoot_release',
+            p.charge >= c.shots.minHold ? 'accepted' : 'rejected',
+            p.charge >= c.shots.minHold ? undefined : 'below-minimum-hold',
+          );
+        }
+        const previousShots = duel.shots;
         if (p.charge >= c.shots.minHold) shoot(i);
         else p.charge = 0;
+        if (import.meta.env?.DEV && duel.shots > previousShots)
+          motionAudit.confirm(i, 'shoot_release', { evidence: 'shot-launched', mode: p.mode });
         if (p.mode === 'contest') p.mode = 'idle';
       }
       const crossing =
         duel.ballControl.owner === i &&
         duel.ballControl.mode === 'dribble' &&
-        duel.ballControl.crossing;
+        (duel.ballControl.crossing || duel.ballControl.skill !== null);
+      if (import.meta.env?.DEV && input.hand) {
+        const id = motionAudit.request(i, 'hand_change', { hand: input.hand });
+        const reason = !owner
+          ? 'not-ball-owner'
+          : p.charge > 0
+            ? 'shot-charging'
+            : crossing
+              ? 'crossing-active'
+              : null;
+        motionAudit.decision(
+          i,
+          id,
+          'hand_change',
+          reason ? 'rejected' : 'accepted',
+          reason ?? undefined,
+        );
+      }
       if (owner && input.hand && p.charge === 0 && !crossing) {
         p.hand = input.hand;
         if (p.handling === 'hold' && p.charge === 0) {
           p.handling = 'dribble';
           p.jab = 0;
           duel.dribbles++;
+        }
+        if (import.meta.env?.DEV)
+          motionAudit.confirm(i, 'hand_change', { evidence: 'selected-hand', hand: p.hand });
+      }
+      if (owner && input.skill && p.charge === 0) {
+        const initialHand =
+          duel.ballControl.owner === i && duel.ballControl.mode === 'dribble'
+            ? duel.ballControl.hand
+            : p.hand;
+        const accepted = requestDribbleSkill(duel.ballControl, input.skill, initialHand);
+        if (import.meta.env?.DEV) {
+          const id = motionAudit.gestureId(input.skill),
+            action = `crossover_${input.skill.kind}`;
+          motionAudit.decision(
+            i,
+            id,
+            action,
+            accepted ? 'accepted' : 'rejected',
+            accepted ? undefined : 'active-skill-or-crossing',
+          );
+          if (accepted)
+            motionAudit.executed(i, id, action, { stage: 'ball-control-skill-created' });
+        }
+        if (accepted) {
+          if (p.handling === 'hold') {
+            p.handling = 'dribble';
+            p.jab = 0;
+            duel.dribbles++;
+          }
+          sound('dribble');
         }
       }
     }
@@ -867,19 +1385,38 @@ export function tickDuel(delta: number) {
               c.player.minMove,
               c.handling.jabTapWindow,
             );
-      if (action === 'jab' && p.jabCd <= 0) {
-        const w = stickToWorld(p.pendingMoveX, p.pendingMoveZ);
-        jab(i, w.x, w.z);
-        p.jabCd = c.handling.jabCooldown;
+      if (action === 'jab') {
+        const id = import.meta.env?.DEV ? motionAudit.request(i, 'jab') : 0;
+        const accepted = p.jabCd <= 0;
+        if (accepted) {
+          const w = stickToWorld(p.pendingMoveX, p.pendingMoveZ);
+          jab(i, w.x, w.z);
+          p.jabCd = c.handling.jabCooldown;
+        }
+        if (import.meta.env?.DEV) {
+          motionAudit.decision(
+            i,
+            id,
+            'jab',
+            accepted ? 'accepted' : 'rejected',
+            accepted ? undefined : 'jab-cooldown',
+          );
+          if (accepted) motionAudit.executed(i, id, 'jab', { evidence: 'jab-started' });
+        }
       } else if (action === 'dribble') {
         p.handling = 'dribble';
         p.jab = 0;
         duel.dribbles++;
         sound('dribble');
+        if (import.meta.env?.DEV) {
+          const id = motionAudit.request(i, 'dribble');
+          motionAudit.decision(i, id, 'dribble', 'accepted');
+          motionAudit.executed(i, id, 'dribble', { evidence: 'held-movement-classified' });
+        }
       }
     } else cancelHeldMovement(p);
     const anchored = duel.owner === i && duel.ballState === 'held' && p.handling === 'hold';
-    const moving = disabled || anchored ? 0 : stick;
+    const moving = disabled || anchored || p.chargeStance || staggering ? 0 : stick;
     p.moving = moving;
     const stat = c.player[p.legend];
     const speed =
@@ -890,23 +1427,26 @@ export function tickDuel(delta: number) {
     let x = 0,
       z = 0;
     if (!disabled) {
-      if (!anchored) {
+      if (!anchored && !p.chargeStance && !staggering) {
         const w = stickToWorld(input.x, input.z);
         x = w.x * speed;
         z = w.z * speed;
       }
       let targetAngle = p.angle;
-      if (moving > 0 && p.mode !== 'post') targetAngle = Math.atan2(x, z);
+      if (moving > 0 && (p.mode !== 'post' || freeMovement())) targetAngle = Math.atan2(x, z);
       const inboundPlay = duel.ballState === 'inbound' || duel.ballState === 'pass';
       const guardAngle = defensiveFacing(i);
-      if (p.mode === 'post')
+      if (p.mode === 'post' && !freeMovement())
         targetAngle =
-          !owner && inboundPlay
-            ? facing(p, duel.ball.x, duel.ball.z) // the actual ball/passer, not a fixed spot
-            : facing(p, rim.x, rim.z) + Math.PI;
+          !owner &&
+          !((duel.ballState === 'inbound' || duel.ballState === 'pass') && duel.inboundOwner === i)
+            ? (defensiveStanceYaw(p, bodies.players[1 - i] ? o : null) ?? p.angle)
+            : !owner && inboundPlay
+              ? facing(p, duel.ball.x, duel.ball.z)
+              : facing(p, rim.x, rim.z) + Math.PI;
       else if (anchored || p.charge > 0)
         targetAngle = facing(p, rim.x, rim.z); // triple threat faces the rim
-      else if (p.mode === 'contest') targetAngle = facing(p, o.x, o.z);
+      else if (p.mode === 'contest' && !freeMovement()) targetAngle = facing(p, o.x, o.z);
       else if (guardAngle !== null) {
         targetAngle = guardAngle; // slide/backpedal, chest on the man
         // heavy defenders slide and backpedal slower than they run forward
@@ -918,8 +1458,36 @@ export function tickDuel(delta: number) {
           z *= slide;
         }
       }
+      if (
+        (p.chargeStance ||
+          p.defenseHands === 'brace' ||
+          (duel.time - p.defensePushAt < c.defense.hands.pushDuration && !p.defensePushApplied)) &&
+        bodies.players[1 - i] &&
+        dist(p, o) < c.defense.guardRange
+      )
+        targetAngle = facing(p, o.x, o.z);
+      if (staggering) targetAngle = p.staggerYaw;
+      if (isLowDefender(i) && p.jump.grounded && bodies.players[1 - i]) {
+        const distance = dist(p, o);
+        const contactRange = 2 * c.physics.radius + c.physics.contactPadding;
+        if (distance > 1e-5 && distance < contactRange) {
+          const nx = (o.x - p.x) / distance,
+            nz = (o.z - p.z) / distance;
+          const excess = Math.max(0, x * nx + z * nz - c.defense.hands.pressureApproachSpeed);
+          x -= excess * nx;
+          z -= excess * nz;
+        }
+      }
       const turn = Math.atan2(Math.sin(targetAngle - p.angle), Math.cos(targetAngle - p.angle));
       p.angle += turn * (1 - Math.exp(-c.ballControl.turnRate * dt));
+      movementRequests[i] = {
+        stick: { x: input.x, z: input.z },
+        worldVelocity: { x, z },
+        opponentRelative:
+          !freeMovement() && bodies.players[1 - i] ? { x: o.x - p.x, z: o.z - p.z } : null,
+        requestedYaw: targetAngle,
+        actualYaw: p.angle,
+      };
     }
     if (p.bite > 0 && !disabled) {
       x = p.biteX * c.handling.jabBiteSpeed;
@@ -948,7 +1516,9 @@ export function tickDuel(delta: number) {
     }
     // Heavy bodies: ramp the controlled velocity toward the intent (~0.4 s to top speed).
     // Scripted motion (dunk glide, biting on a fake) and stops while disabled stay direct.
-    if (p.mode === 'dunk' || (p.bite > 0 && !disabled)) {
+    if (p.chargeStance || staggering) {
+      p.moveVX = p.moveVZ = 0;
+    } else if (p.mode === 'dunk' || (p.bite > 0 && !disabled)) {
       p.moveVX = x;
       p.moveVZ = z;
     } else {
@@ -966,8 +1536,8 @@ export function tickDuel(delta: number) {
       p.moveVX = rampOut.x;
       p.moveVZ = rampOut.z;
     }
-    p.vx *= Math.exp(-c.physics.damping * dt);
-    p.vz *= Math.exp(-c.physics.damping * dt);
+    p.vx *= Math.exp(-c.physics.damping * (staggering ? 0.65 : 1) * dt);
+    p.vz *= Math.exp(-c.physics.damping * (staggering ? 0.65 : 1) * dt);
     // vertical velocity and collision response stay with Rapier
     b.setLinvel(
       {
@@ -1006,7 +1576,7 @@ export function tickDuel(delta: number) {
       p.clumsy = 0;
       if (random() < c.player.fumbleChance) {
         duel.fumbles++;
-        if (duel.owner === i) loose(i);
+        if (duel.owner === i) loose(i, 'exhaustion-fumble');
         p.mode = 'stun';
         p.timer = c.player.stunDuration;
         impact(p);
@@ -1017,6 +1587,9 @@ export function tickDuel(delta: number) {
     if (
       duel.owner === 1 - i &&
       input.r &&
+      !p.chargeStance &&
+      !staggering &&
+      !disabled &&
       p.steal > c.ai.stealInterval &&
       dist(p, o) < c.ai.stealRange &&
       o.charge === 0 &&
@@ -1024,14 +1597,15 @@ export function tickDuel(delta: number) {
     ) {
       p.steal = 0;
       if (random() < c.ai.stealChance * (o.handling === 'hold' ? c.handling.holdStealFactor : 1)) {
-        loose(1 - i);
-        say('Hostile acquisition. Loose ball!');
+        loose(1 - i, 'steal');
+        if (fixedAttacker() === null) say('Hostile acquisition. Loose ball!');
       }
     }
     // Ordinary loose-ball recovery. In-flight catches/steals use 3D sweeps after physics.
     if (
       duel.owner < 0 &&
       duel.ballState === 'loose' &&
+      p.jump.grounded &&
       isOnCourt(duel.ball, PASS_COURT) &&
       duel.looseTimer <= 0 &&
       !disabled &&
@@ -1043,11 +1617,19 @@ export function tickDuel(delta: number) {
       gain(i);
     }
     p.prevQ = input.q;
+    p.prevJump = Boolean(input.jump);
     p.prevR = input.r;
+    p.prevInbound = Boolean(input.inbound);
     p.prevX = input.x;
+    if (import.meta.env?.DEV) {
+      if (p.charge > 0)
+        motionAudit.confirm(i, 'shoot_charge', { evidence: 'charge-increased', charge: p.charge });
+      if (p.mode === 'contest')
+        motionAudit.confirm(i, 'contest', { evidence: 'contest-mode', mode: p.mode });
+    }
   });
   const request = useGameStore.getState().inboundPassRequest;
-  if (request && request.id !== duel.lastInboundRequestId) {
+  if (!freeMovement() && request && request.id !== duel.lastInboundRequestId) {
     duel.lastInboundRequestId = request.id;
     if (
       request.positioning &&
@@ -1058,6 +1640,11 @@ export function tickDuel(delta: number) {
       const receiver = duel.players[request.receiver];
       if (receiver.mode !== 'down' && receiver.mode !== 'stun' && receiver.mode !== 'dunk') {
         receiver.mode = receiver.mode === 'post' ? 'idle' : 'post';
+        if (import.meta.env?.DEV)
+          motionAudit.resolveInbound(request.id, true, undefined, {
+            evidence: 'inbound-positioning',
+            mode: receiver.mode,
+          });
         sound('post');
         say(
           receiver.mode === 'post'
@@ -1065,29 +1652,155 @@ export function tickDuel(delta: number) {
             : 'Get open. Keep moving.',
           request.receiver,
         );
-      }
+      } else if (import.meta.env?.DEV)
+        motionAudit.resolveInbound(request.id, false, `mode-${receiver.mode}`);
     } else {
       duel.players[request.receiver].passRequestAt = duel.time;
-      inboundPassController.launch(request.receiver);
+      const launched = inboundPassController.launch(request.receiver);
+      if (import.meta.env?.DEV)
+        motionAudit.resolveInbound(
+          request.id,
+          launched,
+          launched
+            ? undefined
+            : duel.inboundStage === 'position'
+              ? 'positioning-not-complete'
+              : 'launch-not-available',
+          { evidence: 'inbound-launch', launched },
+        );
+      if (import.meta.env?.DEV)
+        motionRecorder.event(
+          'inbound.launch',
+          { requestId: request.id, receiver: request.receiver, launched },
+          {
+            reason: launched
+              ? undefined
+              : duel.inboundStage === 'position'
+                ? 'positioning-not-complete'
+                : 'launch-not-available',
+          },
+        );
     }
   }
+  // A double forward flick commits one forearm shove after its preparation, hit or miss.
+  duel.players.forEach((p, i) => {
+    if (
+      p.defensePushApplied ||
+      duel.time - p.defensePushAt < c.defense.hands.pushContactTime ||
+      duel.time - p.defensePushAt > c.defense.hands.pushDuration
+    )
+      return;
+    if (import.meta.env?.DEV && freeMovement())
+      motionRecorder.event(
+        'push.performed',
+        { target: null, impulse: null, contact: false, applied: false },
+        { slot: i, reason: 'no-opponent' },
+      );
+    if (
+      freeMovement() ||
+      !bodies.players[1 - i] ||
+      p.mode === 'down' ||
+      p.mode === 'stun' ||
+      p.chargeStance ||
+      !p.jump.grounded ||
+      duel.time < p.staggerUntil ||
+      inputContext(i) !== 'defense'
+    ) {
+      p.defensePushApplied = true;
+      if (import.meta.env.DEV && pushEvidence[i])
+        pushEvidence[i]!.result = bodies.players[1 - i] ? 'unavailable' : 'no-opponent';
+      return;
+    }
+    const o = duel.players[1 - i];
+    const impulse = defensivePushImpulse(
+      { x: p.x, z: p.z, angle: p.angle, mass: c.player[p.legend].mass },
+      { x: o.x, z: o.z, mass: c.player[o.legend].mass },
+    );
+    const gap = currentForearmGap(i, 'push');
+    const measuredContact = gap !== null && gap <= c.defense.hands.forearmContactTolerance;
+    const targetAvailable = o.jump.grounded && o.mode !== 'dunk' && o.mode !== 'down';
+    // Sample contact through a short window so low render rates cannot turn an
+    // unrendered extension frame into either a hit or a permanent early miss.
+    if (
+      (!impulse || !measuredContact) &&
+      duel.time - p.defensePushAt < c.defense.hands.pushContactEnd
+    )
+      return;
+    p.defensePushApplied = true;
+    const result = !impulse
+      ? 'out-of-range-or-facing'
+      : gap === null
+        ? 'no-fresh-forearm'
+        : !measuredContact
+          ? 'forearm-out-of-reach'
+          : !targetAvailable
+            ? 'unavailable'
+            : 'hit';
+    if (import.meta.env?.DEV && pushEvidence[i]) {
+      const evidence = pushEvidence[i]!;
+      evidence.withinRange = !!impulse;
+      evidence.contactEstablished = measuredContact;
+      evidence.measuredGap = gap;
+      evidence.result = result;
+      evidence.velocityBefore = bodies.players[1 - i]?.linvel() ?? null;
+      evidence.requestedDeltaVelocity = impulse;
+    }
+    if (import.meta.env?.DEV)
+      motionRecorder.event(
+        'contact.push',
+        {
+          computedImpulse: impulse,
+          impulse: result === 'hit' ? impulse : null,
+          target: 1 - i,
+          applied: result === 'hit',
+          measuredContact,
+          measuredGap: gap,
+          forearm: forearmContacts[i],
+        },
+        { slot: i, reason: result },
+      );
+    if (!impulse || result !== 'hit') {
+      if (result === 'out-of-range-or-facing' || result === 'forearm-out-of-reach')
+        say('Push je promašio. Priđi i okreni se protivniku.', i);
+      return;
+    }
+    o.vx += impulse.x;
+    o.vz += impulse.z;
+    o.staggerUntil = duel.time + c.defense.hands.pushRecovery;
+    o.staggerYaw = Math.atan2(-impulse.x, -impulse.z);
+    if (import.meta.env?.DEV && pushEvidence[i]) {
+      pushEvidence[i]!.impulseApplied = true;
+      pushEvidence[i]!.origin = { x: o.x, z: o.z };
+    }
+    duel.defensePushes++;
+    sound('post');
+    impact(p);
+    say('Obe podlaktice — napravi prostor!', i);
+  });
   // ---- body contact
   const [a, b] = duel.players,
     d = dist(a, b) || 0.001;
-  if (d < c.physics.radius * 2 + c.physics.contactPadding) {
+  if (bodies.players[1] && d < c.physics.radius * 2 + c.physics.contactPadding) {
     duel.players.forEach((p, i) => {
       const o = duel.players[1 - i];
-      if (o.mode === 'down' && p.moving > c.player.minMove && p.mode !== 'down' && p.grace <= 0) {
+      const nx = (o.x - p.x) / d,
+        nz = (o.z - p.z) / d;
+      const pressing = p.moveVX * nx + p.moveVZ * nz > c.player.minMove;
+      if (o.mode === 'down' && pressing && p.mode !== 'down' && p.grace <= 0) {
         p.mode = 'down';
+        p.fallBackward = false;
         p.timer = c.player.downDuration;
-        if (duel.owner === i) loose(i);
+        if (duel.owner === i) loose(i, 'trip-contact');
         p.mode = 'down';
         impact(p, true);
         say('Trip hazard. No workers’ comp.', i);
       } else if (
         p.mode !== 'down' &&
         p.mode !== 'stun' &&
-        p.moving > c.player.minMove &&
+        p.jump.grounded &&
+        o.jump.grounded &&
+        !isLowDefender(i) &&
+        pressing &&
         p.cooldown <= 0
       ) {
         const power =
@@ -1095,8 +1808,16 @@ export function tickDuel(delta: number) {
           (p.mode === 'post' ? c.player.postImpulse : c.player.normalImpulse) *
           (p.energy < c.player.exhaustedThreshold ? c.player.exhaustedPush : 1);
         const ratio = c.player[p.legend].mass / c.player[o.legend].mass;
-        o.vx += ((o.x - p.x) / d) * power * ratio;
-        o.vz += ((o.z - p.z) / d) * power * ratio;
+        const braceGap = o.defenseHands === 'brace' ? currentForearmGap(1 - i, 'brace') : null;
+        const planted =
+          o.chargeStance ||
+          (braceGap !== null && braceGap <= c.defense.hands.forearmContactTolerance) ||
+          (isLowDefender(1 - i) &&
+            -Math.sin(o.angle) * nx - Math.cos(o.angle) * nz >= c.defense.hands.pushMinFacing);
+        if (planted && d > c.physics.radius * 2 + c.defense.hands.bodyContactSkin) return;
+        const kick = power * ratio * (planted ? c.defense.hands.plantedBumpScale : 1);
+        o.vx += nx * kick;
+        o.vz += nz * kick;
         p.cooldown = c.player.bumpCooldown;
         duel.bumps++;
         impact(p);
@@ -1105,9 +1826,12 @@ export function tickDuel(delta: number) {
   }
   // ---- ball
   const ball = bodies.ball;
-  if (ball) {
+  if (ball && !freeMovement()) {
     syncBallCollision(ball, duel.ballState, BALL_CLEARANCE);
-    if (duel.ballState !== 'held') duel.ballControl.owner = -1;
+    if (duel.ballState !== 'held') {
+      duel.ballControl.owner = -1;
+      cancelDribbleSkill(duel.ballControl);
+    }
     if (duel.ballState === 'held' && duel.owner >= 0) {
       duel.lastTouch = duel.owner;
       const p = duel.players[duel.owner];
@@ -1116,6 +1840,7 @@ export function tickDuel(delta: number) {
         y: c.physics.bodyY,
         z: p.z,
       };
+      const wasSkill = duel.ballControl.skill !== null;
       const target = stepBallHandling(
         duel.ballControl,
         duel.owner,
@@ -1128,8 +1853,9 @@ export function tickDuel(delta: number) {
         p.charge,
         ball.translation(),
         dt,
-        duel.players[1 - duel.owner],
+        bodies.players[1 - duel.owner] ? duel.players[1 - duel.owner] : undefined,
       );
+      if (wasSkill || duel.ballControl.skill) p.hand = duel.ballControl.hand;
       ball.setGravityScale(0, true);
       ball.setNextKinematicTranslation(target);
     } else if (duel.ballState === 'shot' || duel.ballState === 'smash') {
@@ -1194,7 +1920,10 @@ export function tickDuel(delta: number) {
                 : 'Chuck: “That’s barbecue chicken.”',
             f.shooter,
           );
-          if (duel.score[f.shooter] >= c.score.winTarget) {
+          if (
+            useGameStore.getState().session.kind === 'duel' &&
+            duel.score[f.shooter] >= c.score.winTarget
+          ) {
             useInputStore.getState().flush();
             useGameStore.setState({
               screen: f.shooter === 0 ? 'win' : 'gameover',
@@ -1235,7 +1964,7 @@ export function tickDuel(delta: number) {
         sound('whistle');
         say(
           duel.inboundOwner === 0
-            ? 'Pass window open — △ / Q to inbound!'
+            ? 'Pass window open — ✕ / A / E to inbound!'
             : 'CPU inbounding. Deny the pass!',
         );
       } else if (duel.inboundStage === 'pass' && duel.inboundClock <= 0) {
@@ -1253,7 +1982,8 @@ export function tickDuel(delta: number) {
     const bounds = level.bounds;
     if (
       duel.ballState === 'loose' &&
-      (v.x < bounds.minX ||
+      ((soloPractice() && duel.looseTimer <= 0) ||
+        v.x < bounds.minX ||
         v.x > bounds.maxX ||
         v.z < bounds.minZ ||
         v.z > bounds.maxZ ||
@@ -1261,10 +1991,13 @@ export function tickDuel(delta: number) {
     )
       inbound(1 - duel.lastTouch, 'oob');
   }
+  if (import.meta.env?.DEV) motionAudit.runtime(duel);
   // ---- low-frequency HUD snapshot
   duel.hudTimer += dt;
   if (duel.hudTimer >= c.effects.hudInterval) {
     duel.hudTimer = 0;
-    useGameStore.setState((state) => createHudSnapshot(duel, state, HUD_SETTINGS));
+    useGameStore.setState((state) =>
+      createHudSnapshot(duel, state, HUD_SETTINGS, !!bodies.players[1]),
+    );
   }
 }

@@ -36,7 +36,9 @@ export function useControlCapture(
         device === 'keyboard'
           ? 'Pritisni novi taster. Esc odustaje.'
           : device === 'gamepad'
-            ? 'Pusti komande, pa pritisni dugme ili pomeri jednu palicu. Esc odustaje.'
+            ? next.startsWith('SKILL_')
+              ? 'Pusti komande, pa pomeri desnu palicu u izabrani smer (Axis). Esc odustaje.'
+              : 'Pusti komande, pa pritisni dugme ili pomeri jednu palicu. Esc odustaje.'
             : 'Dodirni dugme u prikazu ispod.',
       );
       useControlSettingsStore.getState().setCapturing(true);
@@ -102,7 +104,7 @@ export function useControlCapture(
         if (neutral) neutralAxes = baseline ?? Array.from(pad.axes);
         return;
       }
-      const binding = pressedPadBinding(pad, neutralAxes);
+      const binding = pressedPadBinding(pad, neutralAxes, action.startsWith('SKILL_'));
       if (!binding) return;
       useControlSettingsStore.getState().bindPad(context, action, binding);
       useControlSettingsStore.getState().setCapturing(true);

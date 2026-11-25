@@ -5,6 +5,9 @@ export const CONTROL_ACTIONS = [
   'MOVE_DOWN',
   'ACTION_A',
   'ACTION_B',
+  'CHARGE_STANCE',
+  'JUMP',
+  'INBOUND',
   'HAND_LEFT',
   'HAND_RIGHT',
   'SKILL_LEFT',
@@ -18,7 +21,7 @@ export type ControlContext = 'offense' | 'defense';
 export type InputDevice = 'keyboard' | 'gamepad' | 'mobile';
 export type PadBinding =
   { kind: 'button'; index: number } | { kind: 'axis'; index: number; sign: 1 | -1 };
-export const TOUCH_SLOTS = ['square', 'triangle', 'circle', 'cross'] as const;
+export const TOUCH_SLOTS = ['square', 'triangle', 'circle', 'cross', 'jump'] as const;
 export type TouchSlot = (typeof TOUCH_SLOTS)[number];
 export interface ContextBindings {
   keyboard: Record<ControlAction, string[]>;
@@ -39,13 +42,16 @@ export const ACTION_LABELS: Record<ControlContext, Record<ControlAction, string>
     MOVE_UP: 'Kretanje napred',
     MOVE_DOWN: 'Kretanje nazad',
     ACTION_A: 'Šut · drži i pusti',
-    ACTION_B: 'Stav / zagrađivanje / inbound',
+    ACTION_B: 'Stav / zagrađivanje',
+    CHARGE_STANCE: 'Postavljanje za charge / dupli pritisak za flop',
+    JUMP: 'Mali skok / blok',
+    INBOUND: 'Inbound · dodavanje sa strane',
     HAND_LEFT: 'Leva ruka · dribling / crossover',
     HAND_RIGHT: 'Desna ruka · dribling / crossover',
-    SKILL_LEFT: 'Desna palica levo · kamera',
-    SKILL_RIGHT: 'Desna palica desno · kamera',
-    SKILL_UP: 'Desna palica gore · kamera',
-    SKILL_DOWN: 'Desna palica dole · kamera',
+    SKILL_LEFT: 'Desna palica levo',
+    SKILL_RIGHT: 'Desna palica desno',
+    SKILL_UP: 'Desna palica gore',
+    SKILL_DOWN: 'Desna palica dole',
     PAUSE: 'Pauza / nastavak',
   },
   defense: {
@@ -55,12 +61,15 @@ export const ACTION_LABELS: Record<ControlContext, Record<ControlAction, string>
     MOVE_DOWN: 'Kretanje nazad',
     ACTION_A: 'Contest / pokušaj krađe',
     ACTION_B: 'Niski stav / kontakt',
+    CHARGE_STANCE: 'Postavljanje za charge / dupli pritisak za flop',
+    JUMP: 'Mali skok / blok',
+    INBOUND: 'Inbound · dodavanje sa strane',
     HAND_LEFT: 'Leva ruka (sa loptom)',
     HAND_RIGHT: 'Desna ruka (sa loptom)',
-    SKILL_LEFT: 'Desna palica levo · kamera',
-    SKILL_RIGHT: 'Desna palica desno · kamera',
-    SKILL_UP: 'Desna palica gore · kamera',
-    SKILL_DOWN: 'Desna palica dole · kamera',
+    SKILL_LEFT: 'Desna palica levo',
+    SKILL_RIGHT: 'Desna palica desno',
+    SKILL_UP: 'Desna palica gore',
+    SKILL_DOWN: 'Desna palica dole',
     PAUSE: 'Pauza / nastavak',
   },
 };
@@ -69,6 +78,7 @@ export const TOUCH_GLYPHS: Record<TouchSlot, string> = {
   triangle: '△',
   circle: '○',
   cross: '✕',
+  jump: '↑',
 };
 export function createDefaultProfile(): ControlProfile {
   const context = (): ContextBindings => ({
@@ -79,6 +89,9 @@ export function createDefaultProfile(): ControlProfile {
       MOVE_DOWN: ['KeyS', 'ArrowDown'],
       ACTION_A: ['KeyR', 'Space'],
       ACTION_B: ['KeyQ', 'KeyJ'],
+      CHARGE_STANCE: ['KeyV'],
+      JUMP: ['KeyF'],
+      INBOUND: ['KeyE'],
       HAND_LEFT: ['KeyZ'],
       HAND_RIGHT: ['KeyC'],
       SKILL_LEFT: [],
@@ -93,7 +106,10 @@ export function createDefaultProfile(): ControlProfile {
       MOVE_UP: { kind: 'axis', index: 1, sign: -1 },
       MOVE_DOWN: { kind: 'axis', index: 1, sign: 1 },
       ACTION_A: { kind: 'button', index: 2 },
-      ACTION_B: { kind: 'button', index: 3 },
+      ACTION_B: { kind: 'button', index: 4 },
+      CHARGE_STANCE: { kind: 'button', index: 1 },
+      JUMP: { kind: 'button', index: 3 },
+      INBOUND: { kind: 'button', index: 0 },
       HAND_LEFT: null,
       HAND_RIGHT: null,
       SKILL_LEFT: { kind: 'axis', index: 2, sign: -1 },
@@ -102,11 +118,16 @@ export function createDefaultProfile(): ControlProfile {
       SKILL_DOWN: { kind: 'axis', index: 3, sign: 1 },
       PAUSE: { kind: 'button', index: 9 },
     },
-    mobile: { square: 'ACTION_A', triangle: 'ACTION_B', circle: 'HAND_LEFT', cross: 'HAND_RIGHT' },
+    mobile: {
+      square: 'ACTION_A',
+      triangle: 'ACTION_B',
+      circle: 'CHARGE_STANCE',
+      cross: 'HAND_RIGHT',
+      jump: 'JUMP',
+    },
   });
   const offense = context(),
     defense = context();
-  defense.mobile.circle = null;
   defense.mobile.cross = null;
   return { offense, defense, deadzone: 0.18, padNeutral: {} };
 }
@@ -118,6 +139,13 @@ export function isPadBinding(value: unknown): value is PadBinding {
     b.index >= 0 &&
     b.index < 64 &&
     (b.kind === 'button' || (b.kind === 'axis' && (b.sign === 1 || b.sign === -1)))
+  );
+}
+/** The right stick owns hand selection; each of its directions must remain an axis. */
+export function acceptsPadBinding(action: ControlAction, binding: PadBinding | null) {
+  return (
+    !action.startsWith('HAND_') &&
+    (!action.startsWith('SKILL_') || binding === null || binding.kind === 'axis')
   );
 }
 export function restoreProfile(value: unknown): ControlProfile {
@@ -144,14 +172,6 @@ export function restoreProfile(value: unknown): ControlProfile {
     );
     const legacyLeft = data.gamepad?.HAND_LEFT;
     const legacyRight = data.gamepad?.HAND_RIGHT;
-    const legacyDefaultHands =
-      !hadSkillMap &&
-      legacyLeft?.kind === 'axis' &&
-      legacyLeft.index === 2 &&
-      legacyLeft.sign === -1 &&
-      legacyRight?.kind === 'axis' &&
-      legacyRight.index === 2 &&
-      legacyRight.sign === 1;
     for (const action of CONTROL_ACTIONS) {
       const keys = data.keyboard?.[action];
       if (
@@ -162,32 +182,88 @@ export function restoreProfile(value: unknown): ControlProfile {
       )
         out[context].keyboard[action] = keys;
       const pad = data.gamepad?.[action];
-      if (
-        !(legacyDefaultHands && action.startsWith('HAND_')) &&
-        (pad === null || isPadBinding(pad))
-      )
+      if ((pad === null || isPadBinding(pad)) && acceptsPadBinding(action, pad))
         out[context].gamepad[action] = pad;
     }
-    // Preserve an old custom anatomical binding without also firing the new
-    // default skill direction on that same physical axis/button.
-    if (!hadSkillMap && !legacyDefaultHands)
-      for (const hand of ['HAND_LEFT', 'HAND_RIGHT'] as const) {
-        const binding = out[context].gamepad[hand];
-        for (const skill of ['SKILL_LEFT', 'SKILL_RIGHT', 'SKILL_UP', 'SKILL_DOWN'] as const) {
-          const candidate = out[context].gamepad[skill];
-          if (
-            binding &&
-            candidate &&
-            binding.kind === candidate.kind &&
-            binding.index === candidate.index &&
-            (binding.kind === 'button' ||
-              (candidate.kind === 'axis' && binding.sign === candidate.sign))
-          )
-            out[context].gamepad[skill] = null;
+    // Old hand axes become stick directions; retired hand buttons never fire alongside them.
+    if (!hadSkillMap)
+      for (const [skill, binding] of [
+        ['SKILL_LEFT', legacyLeft],
+        ['SKILL_RIGHT', legacyRight],
+      ] as const)
+        if (isPadBinding(binding) && binding.kind === 'axis') {
+          for (const other of CONTROL_ACTIONS) {
+            const candidate = out[context].gamepad[other];
+            if (
+              other !== skill &&
+              candidate?.kind === 'axis' &&
+              candidate.index === binding.index &&
+              candidate.sign === binding.sign
+            )
+              out[context].gamepad[other] = null;
+          }
+          out[context].gamepad[skill] = binding;
         }
+    // A newly introduced inbound default must not duplicate a saved face-button action.
+    if (!Object.hasOwn(data.gamepad ?? {}, 'INBOUND'))
+      for (const action of CONTROL_ACTIONS) {
+        const binding = out[context].gamepad[action];
+        if (action !== 'INBOUND' && binding?.kind === 'button' && binding.index === 0)
+          out[context].gamepad[action] = null;
       }
+    if (!Object.hasOwn(data.keyboard ?? {}, 'INBOUND'))
+      for (const action of CONTROL_ACTIONS)
+        if (action !== 'INBOUND')
+          out[context].keyboard[action] = out[context].keyboard[action].filter(
+            (key) => key !== 'KeyE',
+          );
+    if (!Object.hasOwn(data.gamepad ?? {}, 'CHARGE_STANCE')) {
+      // Move legacy face-button stance to L1/LB and reserve Circle/B for charge.
+      for (const action of CONTROL_ACTIONS) {
+        if (action === 'CHARGE_STANCE' || action === 'JUMP') continue;
+        const binding = out[context].gamepad[action];
+        if (
+          binding?.kind === 'button' &&
+          (binding.index === 1 ||
+            (binding.index === 3 && !Object.hasOwn(data.gamepad ?? {}, 'JUMP')))
+        )
+          out[context].gamepad[action] =
+            action === 'ACTION_B' &&
+            !CONTROL_ACTIONS.some(
+              (other) =>
+                other !== action &&
+                other !== 'JUMP' &&
+                out[context].gamepad[other]?.kind === 'button' &&
+                out[context].gamepad[other]?.index === 4,
+            )
+              ? { kind: 'button', index: 4 }
+              : null;
+      }
+    }
+    if (!Object.hasOwn(data.keyboard ?? {}, 'JUMP'))
+      for (const action of CONTROL_ACTIONS)
+        if (action !== 'JUMP')
+          out[context].keyboard[action] = out[context].keyboard[action].filter(
+            (key) => key !== 'KeyF',
+          );
+    // Older versions could swap a face button into a skill action. Restoring
+    // that unsupported binding to its axis default must not duplicate another action.
+    const claimed = new Set<string>();
+    for (const action of CONTROL_ACTIONS) {
+      const binding = out[context].gamepad[action];
+      if (!binding) continue;
+      const signature = JSON.stringify(binding);
+      if (claimed.has(signature)) out[context].gamepad[action] = null;
+      else claimed.add(signature);
+    }
     for (const slot of TOUCH_SLOTS) {
       const action = data.mobile?.[slot];
+      if (
+        slot === 'circle' &&
+        !Object.hasOwn(data.gamepad ?? {}, 'CHARGE_STANCE') &&
+        (action == null || action === 'HAND_LEFT')
+      )
+        continue;
       if (action === null || CONTROL_ACTIONS.includes(action as ControlAction))
         out[context].mobile[slot] = action;
     }

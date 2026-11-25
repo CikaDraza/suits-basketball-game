@@ -76,8 +76,9 @@ test('reuses model requests across matchup changes and resets inbound state', as
       .poll(() => page.evaluate(() => window.__TEST__!.getPerformance().drawCalls))
       .toBeGreaterThan(0);
   }
-  expect(modelRequests).toHaveLength(2);
-  expect(new Set(modelRequests).size).toBe(2);
+  // Two cached character models plus Shaq's defense and clean jump clips.
+  expect(modelRequests).toHaveLength(4);
+  expect(new Set(modelRequests).size).toBe(4);
 
   await page.evaluate(() => window.__TEST__!.reset(42, 'inbound'));
   await expect

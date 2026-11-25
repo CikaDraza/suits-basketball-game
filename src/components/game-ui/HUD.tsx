@@ -1,6 +1,6 @@
 import { PORTRAIT_PATHS } from '../../game/assets/manifest';
 import { config } from '../../game/data/gameConfig';
-import { useGameStore } from '../../game/state/gameStore';
+import { isFreeMovement, isSoloPractice, useGameStore } from '../../game/state/gameStore';
 import type { PlayerSlot } from '../../game/simulation/types';
 import {
   isPerfectCharge,
@@ -29,6 +29,7 @@ function PlayerScore({ slot }: { slot: PlayerSlot }) {
 function FighterChip({ slot }: { slot: PlayerSlot }) {
   const legend = useGameStore((state) => state.legends[slot]);
   const cpu = useGameStore((state) => slot === 1 && state.cpu);
+  const movement = useGameStore((s) => isFreeMovement(s.session));
   const portrait = <img src={PORTRAIT_PATHS[legend]} alt="" />;
   return (
     <div className={`fighter-chip${slot === 1 ? ' rival' : ''}`}>
@@ -37,7 +38,7 @@ function FighterChip({ slot }: { slot: PlayerSlot }) {
         <span className="micro">
           {slot === 0 ? 'YOU' : cpu ? 'CPU' : 'P2'} · {config.player[legend].name}
         </span>
-        <PlayerScore slot={slot} />
+        {!movement && <PlayerScore slot={slot} />}
         <EnergyMeter slot={slot} />
       </div>
       {slot === 1 && portrait}
@@ -78,7 +79,7 @@ function InboundPassButton() {
   const handlers = useInboundPass();
   return (
     <button type="button" className="inbound-prompt" aria-label="Pass inbound" {...handlers}>
-      ◯<span>Q / △</span>
+      ✕<span>E / ✕ / A</span>
     </button>
   );
 }
@@ -94,16 +95,27 @@ const pauseGame = () => useGameStore.getState().pause();
 
 /** Each changing HUD field owns its subscription; the layout has no store subscription. */
 export function HUD() {
+  const session = useGameStore((s) => s.session);
+  const movement = isFreeMovement(session);
+  const solo = isSoloPractice(session);
+  const label =
+    session.kind === 'duel'
+      ? `FIRST TO ${config.score.winTarget}`
+      : session.drill === 'one-on-one'
+        ? `1v1 · ${session.role.toUpperCase()}`
+        : solo
+          ? 'SOLO PRACTICE'
+          : 'FREE MOVEMENT';
   return (
     <div className="hud">
       <header className="hud-header">
         <FighterChip slot={0} />
         <div className="match-chip">
-          <span className="micro">NO FOULS</span>
-          <b>FIRST TO {config.score.winTarget}</b>
+          <span className="micro">{session.kind === 'training' ? 'TRAINING' : 'NO FOULS'}</span>
+          <b>{label}</b>
           <span className="live-dot">● LIVE</span>
         </div>
-        <FighterChip slot={1} />
+        {!movement && !solo && <FighterChip slot={1} />}
       </header>
       <div className="court-heading">
         <span>THE LAST DANCE</span>
@@ -118,13 +130,13 @@ export function HUD() {
       </button>
       <div className="bottom-info">
         <HandlingLabel />
-        <ShotFeedback />
+        {movement ? <p>MOVE · STANCE · DEFENSIVE HANDS</p> : <ShotFeedback />}
       </div>
       <InboundPrompt />
       <div className="control-legend">
         <span>MOVE</span>
-        <span>△ POST / SPIN</span>
-        <span>□ SHOOT / CONTEST</span>
+        <span>{movement ? 'Q STANCE · F JUMP' : 'Q POST / SPIN · F JUMP'}</span>
+        <span>{movement ? '□ CONTEST · RS HANDS' : '□ SHOOT / CONTEST'}</span>
       </div>
     </div>
   );

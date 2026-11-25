@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>SUITS — Right-stick acceptance</title
+  ><style>
+    body {
+      margin: 0;
+      background: #101820;
+      color: #f2eee6;
+      font: 14px system-ui;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 100vh;
+    }
+    aside {
+      padding: 16px;
+    }
+    h1 {
+      font-size: 20px;
+    }
+    p {
+      line-height: 1.5;
+    }
+    label {
+      display: block;
+      margin: 12px 0;
+    }
+    select,
+    button,
+    input {
+      font: inherit;
+      color: inherit;
+      background: #243441;
+      border: 1px solid #8193a1;
+      border-radius: 4px;
+      padding: 7px;
+    }
+    input {
+      width: 42px;
+    }
+    button {
+      cursor: pointer;
+    }
+    .compass {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+    }
+    .compass button {
+      min-height: 44px;
+    }
+    iframe {
+      border: 0;
+      width: 100%;
+      height: 640px;
+      min-width: 720px;
+    }
+    pre {
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+    section {
+      overflow: auto;
+    }
+    a {
+      color: #ffd39d;
+    }
+  </style>
+  <main>
+    <aside>
+      <h1>RIGHT-STICK-RELATIVE-1</h1>
+      <p>
+        This test iframe supplies physical Gamepad API axes. It does not call basketball actions
+        directly. For a real controller, open
+        <a href="/game/?rightStickDebug=1" target="_blank">the game with the DEV overlay</a>.
+      </p>
+      <label
+        >Character
+        <select id="legend">
+          <option value="shaq">Shaq</option>
+          <option value="chuck">Chuck</option>
+        </select></label
+      >
+      <label
+        >Context
+        <select id="context">
+          <option value="defense">Defense</option>
+          <option value="offense">Offense</option>
+        </select></label
+      >
+      <button id="reset" disabled>Reset test fixture</button>
+      <label
+        >Set body heading
+        <select id="facing">
+          <option value="90">Up</option>
+          <option value="45">Up-right</option>
+          <option value="0">Right</option>
+          <option value="315">Down-right</option>
+          <option value="270">Down</option>
+          <option value="225">Down-left</option>
+          <option value="180">Left</option>
+          <option value="135">Up-left</option>
+        </select></label
+      >
+      <button id="rotate" disabled>Rotate body 90° while held</button>
+      <label
+        >Physical horizontal Axis
+        <input id="horizontal" type="number" min="0" max="7" value="2" /></label
+      ><label
+        >Physical vertical Axis <input id="vertical" type="number" min="0" max="7" value="3"
+      /></label>
+      <div class="compass">
+        <button data-x="-1" data-y="-1">↖</button><button data-x="0" data-y="-1">↑</button
+        ><button data-x="1" data-y="-1">↗</button><button data-x="-1" data-y="0">←</button
+        ><button data-x="0" data-y="0">Neutral</button><button data-x="1" data-y="0">→</button
+        ><button data-x="-1" data-y="1">↙</button><button data-x="0" data-y="1">↓</button
+        ><button data-x="1" data-y="1">↘</button>
+      </div>
+      <button id="double" disabled style="margin-top: 12px">Double-flick selected direction</button>
+      <p>
+        Each arrow holds a physical direction. Changing arrows while held must keep defense locked.
+        Neutral accepts a fresh gesture. Double-flicks are classified relative to the current body
+        heading.
+      </p>
+      <pre id="status">Loading game…</pre>
+    </aside>
+    <section>
+      <iframe id="game" title="Actual SUITS gameplay" src="/game/?rightStickDebug=1"></iframe>
+    </section>
+  </main>
+  <script>
+    const iframe = document.querySelector('#game'),
+      status = document.querySelector('#status'),
+      axes = Array(8).fill(0);
+    let game = null,
+      last = [0, -1],
+      ready = false;
+    const field = (id) => document.querySelector('#' + id);
+    const frame = () => new Promise((resolve) => game.requestAnimationFrame(() => resolve()));
+    function stick(x, y) {
+      axes.fill(0);
+      axes[Number(field('horizontal').value)] = x;
+      axes[Number(field('vertical').value)] = y;
+      if (x || y) last = [x, y];
+    }
+    function face() {
+      if (!game?.__TEST__?.getRightStickDebug) return;
+      const d = game.__TEST__.getRightStickDebug(0);
+      if (!d) return;
+      const a = (Number(field('facing').value) * Math.PI) / 180;
+      game.__TEST__.setFacing(
+        0,
+        d.cameraYaw + Math.atan2(Math.cos(a), -Math.sin(a) / d.cameraPitchScale),
+      );
+    }
+    async function reset() {
+      if (!game?.__TEST__?.ready) return;
+      stick(0, 0);
+      game.__TEST__.setLegend(0, field('legend').value);
+      await game.__TEST__.reset(42, 'live');
+      game.__TEST__.teleport('player', [6, 0.95, 0]);
+      game.__TEST__.teleport('opponent', [1, 0.95, 6]);
+      if (field('context').value === 'defense') game.__TEST__.teleport('ball', [0.5, 1, -6]);
+      else game.__TEST__.setHandling(0, 'dribble', 1);
+      await frame();
+      await frame();
+      face();
+    }
+    iframe.onload = () => {
+      game = iframe.contentWindow;
+      Object.defineProperty(game.navigator, 'getGamepads', {
+        configurable: true,
+        value: () => [
+          {
+            id: 'RS interactive pad',
+            index: 0,
+            connected: true,
+            mapping: 'standard',
+            timestamp: game.performance.now(),
+            axes: [...axes],
+            buttons: Array.from({ length: 16 }, () => ({
+              pressed: false,
+              touched: false,
+              value: 0,
+            })),
+          },
+        ],
+      });
+      const wait = setInterval(async () => {
+        if (!game.__TEST__?.ready) return;
+        clearInterval(wait);
+        game.__TEST__.setDebugFlag('testMode', true);
+        await reset();
+        ready = true;
+        for (const button of document.querySelectorAll('button')) button.disabled = false;
+      }, 100);
+    };
+    field('reset').onclick = reset;
+    field('legend').onchange = reset;
+    field('context').onchange = reset;
+    field('facing').onchange = face;
+    field('rotate').onclick = () => {
+      const d = game.__TEST__.getRightStickDebug(0);
+      game.__TEST__.setFacing(0, d.bodyFacing + Math.PI / 2);
+    };
+    for (const button of document.querySelectorAll('[data-x]'))
+      button.onclick = () => {
+        if (ready) stick(Number(button.dataset.x), Number(button.dataset.y));
+      };
+    field('double').onclick = async () => {
+      const [x, y] = last;
+      stick(0, 0);
+      await frame();
+      await frame();
+      stick(x, y);
+      await frame();
+      await frame();
+      stick(0, 0);
+      await frame();
+      await frame();
+      stick(x, y);
+    };
+    setInterval(() => {
+      if (!ready) return;
+      const d = game.__TEST__.getRightStickDebug(0);
+      status.textContent = d
+        ? JSON.stringify(
+            {
+              action: d.selected,
+              phase: d.phase,
+              body: d.bodyRelative,
+              rawAxes: d.rawAxes,
+              bodyFacing: d.bodyFacing,
+              lockedFacing: d.lockedFacing,
+            },
+            null,
+            2,
+          )
+        : 'Waiting for a sampled frame…';
+    }, 150);
+  </script>
+</html>

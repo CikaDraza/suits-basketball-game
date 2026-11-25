@@ -3,6 +3,21 @@ import { clamp } from '../utils/math';
 import type { PassPoint } from './tacticalPass';
 import { createDribbleShape, writeDribbleShape, type DribbleShape } from './dribbleProfile';
 
+export interface DribbleSkillRequest {
+  kind?: 'side' | 'front' | 'behind';
+  hand: 1 | -1;
+  double?: boolean;
+}
+
+export interface DribbleSkill {
+  kind: 'side' | 'front' | 'behind';
+  started: boolean;
+  completed: number;
+  total: number;
+  initialHand: number;
+  targetHand: number;
+}
+
 export interface BallHandlingState {
   owner: number;
   mode: 'hold' | 'dribble';
@@ -22,6 +37,8 @@ export interface BallHandlingState {
   pressureSide: number;
   pressureForward: number;
   shape: DribbleShape | null;
+  skill: DribbleSkill | null;
+  lastSkill: DribbleSkill | null;
 }
 export function createBallHandlingState(): BallHandlingState {
   return {
@@ -43,7 +60,101 @@ export function createBallHandlingState(): BallHandlingState {
     pressureSide: 0,
     pressureForward: 0,
     shape: null,
+    skill: null,
+    lastSkill: null,
   };
+}
+
+/** Queue a deliberate move; only a second rear flick can extend an active move. */
+export function requestDribbleSkill(
+  state: BallHandlingState,
+  request: DribbleSkillRequest,
+  initialHand: number,
+): boolean {
+  const kind = request.kind ?? 'side';
+  if (state.skill) {
+    if (kind !== 'behind' || !request.double || state.skill.kind !== 'behind') return false;
+    if (state.skill.total === 3) return false;
+    state.skill.total = 3;
+    return true;
+  }
+  if (state.crossing) return false;
+  const resume =
+    kind === 'behind' &&
+    request.double &&
+    state.lastSkill?.kind === 'behind' &&
+    state.lastSkill.total === 1
+      ? state.lastSkill
+      : null;
+  if (resume) {
+    // Keep the same command identity so its single movement-risk roll remains
+    // authoritative when the second flick arrives just after the first catch.
+    resume.total = 3;
+    state.skill = resume;
+    startSkillBounce(state);
+    return true;
+  }
+  state.skill = {
+    kind,
+    started: false,
+    completed: 0,
+    total:
+      kind === 'front' || (kind === 'behind' && request.double)
+        ? 3
+        : kind === 'side' && request.hand === initialHand
+          ? 2
+          : 1,
+    initialHand,
+    targetHand: kind === 'side' ? request.hand : -initialHand,
+  };
+  return true;
+}
+
+export function cancelDribbleSkill(state: BallHandlingState) {
+  state.skill = null;
+  state.lastSkill = null;
+  state.crossing = false;
+  state.fromHand = state.toHand = state.hand;
+}
+
+function startSkillBounce(state: BallHandlingState) {
+  const skill = state.skill!;
+  skill.started = true;
+  state.fromHand = state.hand;
+  state.toHand = skill.kind === 'side' ? skill.targetHand : -state.hand;
+  state.crossing = state.fromHand !== state.toHand;
+}
+
+/** The same bounce clock drives the ball, hand contacts, and the entire combination. */
+function advanceSkill(state: BallHandlingState, dt: number) {
+  let remaining = Math.max(0, dt);
+  while (remaining > 1e-9) {
+    const period = state.skill?.started
+      ? config.ballControl.skills.period
+      : config.ballControl.period;
+    const available = (1 - state.phase) * period;
+    const elapsed = Math.min(remaining, available);
+    const previous = state.phase;
+    state.phase += elapsed / period;
+    if (Math.abs(state.phase - 0.5) < 1e-9) state.phase = 0.5;
+    if (previous < 0.5 && state.phase >= 0.5) {
+      state.floorEvent = true;
+      if (state.crossing) state.hand = state.toHand;
+    }
+    remaining -= elapsed;
+    if (elapsed < available - 1e-9) break;
+    state.phase = 0;
+    if (state.crossing) state.hand = state.toHand;
+    state.crossing = false;
+    if (state.skill?.started) {
+      state.skill.completed++;
+      if (state.skill.completed >= state.skill.total) {
+        state.lastSkill = state.skill;
+        state.skill = null;
+      }
+    }
+    if (state.skill) startSkillBounce(state);
+  }
 }
 export function smoothUnit(t: number) {
   const u = clamp(t, 0, 1);
@@ -126,7 +237,9 @@ export function stepBallHandling(
       state.phase = 0;
       state.hand = requestedHand;
       state.crossing = false;
-    }
+      if (state.skill && !state.skill.started) startSkillBounce(state);
+      else cancelDribbleSkill(state);
+    } else cancelDribbleSkill(state);
     state.pressureSide = state.pressureForward = 0;
     state.shape ??= createDribbleShape(legend);
   }
@@ -175,17 +288,20 @@ export function stepBallHandling(
     z = shape.holdForward;
   if (mode === 'dribble' && charge === 0) {
     const previous = state.phase;
-    state.phase = (state.phase + dt / cfg.period) % 1;
-    state.floorEvent = previous < 0.5 && state.phase >= 0.5;
-    if (state.phase < previous) {
-      if (state.crossing) {
-        state.hand = state.toHand;
-        state.crossing = false;
-      }
-      if (requestedHand !== state.hand) {
-        state.crossing = true;
-        state.fromHand = state.hand;
-        state.toHand = requestedHand;
+    if (state.skill) advanceSkill(state, dt);
+    else {
+      state.phase = (state.phase + dt / cfg.period) % 1;
+      state.floorEvent = previous < 0.5 && state.phase >= 0.5;
+      if (state.phase < previous) {
+        if (state.crossing) {
+          state.hand = state.toHand;
+          state.crossing = false;
+        }
+        if (requestedHand !== state.hand) {
+          state.crossing = true;
+          state.fromHand = state.hand;
+          state.toHand = requestedHand;
+        }
       }
     }
     const across = state.crossing ? smoothUnit(state.phase) : 0;
@@ -197,14 +313,32 @@ export function stepBallHandling(
     z =
       state.shape.dribbleForward +
       (state.crossing ? Math.sin(state.phase * Math.PI) * cfg.crossoverForward : 0);
-    if (state.crossing && previous < 0.5 && state.phase >= 0.5) state.hand = state.toHand;
+    if (state.skill?.started) {
+      const outward = Math.sin(state.phase * Math.PI) ** 2;
+      if (state.skill.kind === 'side' && !state.crossing)
+        x += state.hand * cfg.skills.sideReach * outward;
+      if (state.skill.kind === 'behind') {
+        z =
+          state.shape.dribbleForward +
+          (cfg.skills.behindForward - state.shape.dribbleForward) * outward;
+        // The release and catch stay outside the hips while the free ball crosses behind.
+        x += state.fromHand * cfg.skills.sideReach * Math.sin(2 * Math.PI * state.phase);
+      }
+    }
+    if (!state.skill && state.crossing && previous < 0.5 && state.phase >= 0.5)
+      state.hand = state.toHand;
   } else if (charge > 0) {
     y +=
       (config.player[legend].height - config.ball.foreheadOffset - y) *
       clamp(charge / config.shots.perfectTime, 0, 1);
     z = shape.holdForward;
   }
-  const blend = smoothUnit(state.entryTime / cfg.transitionTime);
+  // A quick entry must finish before the first floor contact, even when the
+  // move starts from the two-hand chest hold rather than an existing dribble.
+  const entryDuration = state.skill?.started
+    ? Math.min(cfg.transitionTime, Math.max(1e-6, cfg.skills.period * 0.5 - dt))
+    : cfg.transitionTime;
+  const blend = smoothUnit(state.entryTime / entryDuration);
   state.local.x = state.entry.x + (x - state.entry.x) * blend;
   state.local.y = state.entry.y + (y - state.entry.y) * blend;
   state.local.z = state.entry.z + (z - state.entry.z) * blend;

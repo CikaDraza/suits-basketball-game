@@ -4,13 +4,14 @@ import type { ActionId } from './types';
 
 interface ActionButtonOptions {
   pulseMs?: number;
+  control?: string;
   highlight?: boolean;
 }
 
 /** Shared pointer, keyboard, cancellation and optional pulse lifecycle for action controls. */
 export function useActionButton(
   action: ActionId,
-  { pulseMs, highlight = true }: ActionButtonOptions = {},
+  { pulseMs, highlight = true, control }: ActionButtonOptions = {},
 ) {
   const pressed = useRef(false);
   const pointerId = useRef<number | null>(null);
@@ -23,15 +24,15 @@ export function useActionButton(
     if (!pressed.current) return;
     pressed.current = false;
     if (highlight && button.current) button.current.style.background = 'rgba(255,255,255,0.1)';
-    dispatchGameInput(action, 'up', { source: 'touch' });
-  }, [action, highlight]);
+    dispatchGameInput(action, 'up', { source: 'touch', control });
+  }, [action, highlight, control]);
   const press = useCallback(() => {
     if (pressed.current) return;
     pressed.current = true;
     if (highlight && button.current) button.current.style.background = 'rgba(255,255,255,0.25)';
-    dispatchGameInput(action, 'down', { source: 'touch' });
+    dispatchGameInput(action, 'down', { source: 'touch', control });
     if (pulseMs !== undefined) timer.current = setTimeout(release, pulseMs);
-  }, [action, highlight, pulseMs, release]);
+  }, [action, highlight, pulseMs, release, control]);
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.hidden) release();

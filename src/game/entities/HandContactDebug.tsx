@@ -26,6 +26,7 @@ export function HandContactDebug({ arms }: { readonly arms: readonly Arm[] }) {
         root.children[i * 3 + j].visible = j !== 2 || arm.debug.weight > 0.01;
       }
     });
+    root.children[6].visible = !!bodies.ballMesh;
     if (bodies.ballMesh) {
       bodies.ballMesh.getWorldPosition(p);
       root.worldToLocal(p);

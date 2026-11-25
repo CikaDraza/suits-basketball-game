@@ -1,7 +1,7 @@
 # Gameplay Foundation v2 — autoritativni status
 
-Aktuelni korektivni slice: **DRIBBLE-1A/B/C — Automated Verified**, na osnovi PR #1 /
-`main` `e0e9cc5`, grana `feat/dribble-1` (2026-11-08). Vodi se kroz
+Istorijski korektivni slice (2026-11-08): **DRIBBLE-1A/B/C — Automated Verified**, na osnovi PR #1 /
+`main` `e0e9cc5`, grana `feat/dribble-1`. Vodi se kroz
 [specifikaciju](DRIBBLE_1_SPEC.md) i [izveštaj](DRIBBLE_1_IMPLEMENTATION.md).
 S02/S04/napredni S06 se ne otvaraju ovim zahvatom; odobrene buduće gamepad mape
 su zapisane u izveštaju, uz očuvanje sadašnjih akcija. Završno: check 106/106,
@@ -49,7 +49,7 @@ ostaju vidljive u [registru scenarija](SCENARIO_REGISTRY.md).
 | S01   | Ceo ciklus ruke pri driblingu i kontakt               | S00                                                     | Implemented — nova kalibracija posle povratne informacije; 78/78 unit, dribble browser 4/4, završni input/gait 14/14; prihvatanje pending |
 | S02   | Jedinstvene input namere i gamepad                    | S00; izvršavanje posle S01                              | Planned — ograničena dopuna mapiranja i izbora ruke implementirana na korisnički zahtev; pun intent/replay ugovor ostaje planiran         |
 | S03   | Teško kretanje, tempo i progresivni zamor             | S02                                                     | Planned — korisnička korekcija širine oslonca/koraka izvedena; pun body-motion slice ostaje planiran                                      |
-| S04   | Kontakt, odbrambeni otpor i balans                    | S03                                                     | Planned                                                                                                                                   |
+| S04   | Kontakt, odbrambeni otpor i balans                    | S03                                                     | In Progress — ispravljen prilaz u niskom stavu i provereni Brace/Push za oba lika                                                         |
 | S05   | Triple threat, pivot i jab                            | S04                                                     | Planned                                                                                                                                   |
 | S06   | Crossover i overcommitment                            | S05 + S01 (dopuna audita)                               | Planned — ručni izbor ruke proširuje postojeći crossover; reakcija odbrane i pun technique sistem ostaju planirani                        |
 | S07   | Inbound predikcija, lob i recovery                    | S03 + S04; regresije kontakta S01                       | Planned; postojeći inbound ostaje osnova                                                                                                  |
@@ -63,9 +63,34 @@ ostaju vidljive u [registru scenarija](SCENARIO_REGISTRY.md).
 | S15   | Početno raspucavanje i lifecycle duela                | S09 + reset regresije                                   | Planned                                                                                                                                   |
 | S16   | CPU, povezivanje poteza, balans i performanse         | Prihvaćeni prethodni gameplay slice-ovi                 | Planned                                                                                                                                   |
 
-Izvršavanje ide S00 → S01 → S02, zatim numeričkim redom uz kapije iz tabele.
-Promena prioriteta zbog greške koja sprečava proveru mora biti zapisana kao
-ograničen zahvat tekućeg slice-a. Nema usputnog otvaranja drugog velikog slice-a.
+### Dogovoreni redosled rada od 2026-11-20
+
+Polazna verzija za probu je `staging` na commitu `3f10682`. U toj verziji postoje
+Solo i 1v1 trening. Korisnik je potvrdio da osnovni dribling zadržava posed pri
+LS kretanju i da mali skok za blok izgleda dobro.
+
+1. Odbrana i telesni kontakt (S04). Provera prilaska u niskom stavu, naslanjanja,
+   otpora, dodira podlaktice i reakcije nogu na Push.
+2. Dribling pod pritiskom i funkcionalna igra leđima. Očuvati osnovni dribling,
+   vezati gubitak poseda za situaciju u duelu i proveriti kretanje unazad uz otpor.
+3. Pivot i jab step (S05). Vežbati oslonac jednog stopala, kratak LS unos i
+   povratak u početni položaj.
+4. Bočni izlaz ramenom i spin iz igre leđima. Proveriti putanju oko stvarnog
+   položaja branioca pri kontaktu.
+5. Šut i finta (S08/S09). Funkcionalna igra leđima i spin iz prethodnih koraka
+   imaju prioritet pre šuta. S10 u tabeli i dalje pokriva završnice koje zahtevaju šut.
+
+Tabela čuva izvorne zavisnosti za pune slice-ove. Novi redosled određuje šta prvo
+proveravamo u igri. Trčanje na R1, izbor ruke pri inboundu i lob ostaju zabeleženi.
+Snimanje pokreta u KinemiQ-u i Blenderu sledi posle provere funkcije i reakcije.
+
+Prva S04 provera reprodukovala je odgurivanje pre dosega podlaktice. Niski stav
+branioca sada koristi sudar tela pri prilasku, a Push traži sveže merenje
+podlaktice prema torzu. Browser provere za Shaqa i Chucka potvrdile su kosi
+prilaz i kontakt u 1v1 Defense Practice, kao i razliku između promašaja i
+pogotka sa korakom oporavka. Snimci i merenja su u
+`playtest/s04-contact-verified/`. Osećaj otpora i vizuelno prihvatanje ostaju
+za korisničku probu.
 
 ## Pregled pre početka S01
 
@@ -87,7 +112,7 @@ Izvršeno: check 65/65, build PASS, S01 browser 4/4; pun paket 31/33 sa otvoreni
 Chuck gait/sampling padovima B-02/B-04. Nije proglašen potpuno zelenim.
 Implementaciju, crveni/zeleni test, kalibraciju i stvarnu proveru vodi
 [S01 izveštaj](S01_IMPLEMENTATION_REPORT.md). Prihvatanje S01 ostaje pending.
-S02–S16 nisu započeti. Kanonski predlog i S00 baseline nisu prepisivani da bi se
+Na kraju prvobitne S01 provere S02–S16 nisu bili započeti. Kanonski predlog i S00 baseline nisu prepisivani da bi se
 naknadni rezultati prikazali kao polazno stanje.
 
 ### Korekcija po korisničkoj povratnoj informaciji

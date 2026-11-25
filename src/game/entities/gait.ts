@@ -334,8 +334,11 @@ export function stepGait(state: GaitState, input: GaitInput, tuning: GaitTuning)
   }
 
   // pass 3: planted feet hold their world point
-  for (const f of state.feet) {
+  for (const [i, f] of state.feet.entries()) {
     if (f.swinging) continue;
+    // The capsule settles from spawn height onto the court after the first pose.
+    // Preserve planted X/Z and yaw, but follow the measured support plane in Y.
+    f.planted.y = neutral[i].y;
     f.target.copy(f.planted);
     f.yaw = f.plantedYaw;
     f.lift = 0;

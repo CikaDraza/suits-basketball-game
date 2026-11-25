@@ -47,3 +47,6 @@ Keep gravity-16, floor thickness.4, CCD loose ball, mass155/115, DPR1 and one512
 - Jab starts on release of a short tap. Continuing movement goes directly to dribble, without playing a jab first. Event timing preserves taps between render/physics frames.
 - CPU fake tap is 0.05 s so it remains a tap under the new threshold; player movement speeds are unchanged.
 - Post two-hand IK lowers the wrist center 0.13 × character height below the shoulder midpoint and places each wrist ball radius +0.02 m to its side. The elbow bend pole stays outward.
+
+## Imported Shaq defense — 2026-11-13
+- `animation.importedDefense`: 0.3 s entry/exit blend and lower-body blend rate 12/s preserve readable transitions while returning moving feet to the existing gait/IK.

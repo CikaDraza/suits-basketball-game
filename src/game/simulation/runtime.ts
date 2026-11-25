@@ -1,5 +1,6 @@
 import { config, level, type Legend } from '../data/gameConfig';
 import { createBallHandlingState } from './ballHandling';
+import { createSmallJump } from './smallJump';
 import {
   INITIAL_MESSAGE,
   type BallFlight,
@@ -23,11 +24,24 @@ function createFighter(slot: number, legend: Legend): Fighter {
     vx: 0,
     vz: 0,
     hand: 1,
-    lastQ: -10,
+    defenseHands: 'none',
+    defenseReleased: false,
+    defensePushAt: -10,
+    defensePushApplied: false,
+    defensePushCooldown: -1,
+    lastChargePress: -Infinity,
+    prevChargeStance: false,
+    chargeStance: false,
+    fallBackward: false,
+    staggerUntil: -Infinity,
+    staggerYaw: 0,
     lastR: -10,
     taps: 0,
     prevQ: false,
+    prevJump: false,
+    jump: createSmallJump(),
     prevR: false,
+    prevInbound: false,
     interceptUntil: -1,
     prevX: 0,
     aiClock: 0,
@@ -65,7 +79,7 @@ export function createDuelState(
   legends: [Legend, Legend],
   seed = 42,
   revision = -1,
-  start: 'inbound' | 'live' = 'inbound',
+  start: 'inbound' | 'live' | 'movement' = 'inbound',
 ) {
   const spawn = level.spawns[level.initialOwner];
   return {
@@ -73,7 +87,11 @@ export function createDuelState(
     players: [createFighter(0, legends[0]), createFighter(1, legends[1])] as [Fighter, Fighter],
     owner: start === 'live' ? level.initialOwner : -1,
     lastTouch: level.initialOwner,
-    ballState: (start === 'live' ? 'held' : 'inbound') as BallState,
+    ballState: (start === 'movement'
+      ? 'inactive'
+      : start === 'live'
+        ? 'held'
+        : 'inbound') as BallState,
     ballControl: createBallHandlingState(),
     ball:
       start === 'live'
@@ -96,6 +114,7 @@ export function createDuelState(
     } as BallFlight,
     score: [0, 0] as [number, number],
     bumps: 0,
+    defensePushes: 0,
     shots: 0,
     dunks: 0,
     smashes: 0,
@@ -117,9 +136,9 @@ export function createDuelState(
     resetTimer: 0,
     nextOwner: level.initialOwner,
     looseTimer: 0,
-    inboundOwner: level.initialOwner,
+    inboundOwner: start === 'movement' ? -1 : level.initialOwner,
     inboundStage: 'position' as InboundStage,
-    inboundClock: start === 'live' ? 0 : config.inbound.positionTime,
+    inboundClock: start === 'inbound' ? config.inbound.positionTime : 0,
     aiPassAt: 0,
     inboundPass: null as PhysicalInboundPass | null,
     lastInboundRequestId: 0,

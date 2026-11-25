@@ -22,7 +22,7 @@ export function selectActionHint(state: GameStore) {
           ? 'SEAL · SHOW A HAND'
           : 'Q · SEAL & CALL FOR THE BALL'
         : 'FIGHT FOR POSITION';
-    return mine ? '△ / Q · PASS IT IN' : 'DENY THE PASS';
+    return mine ? '✕ / A / E · PASS IT IN' : 'DENY THE PASS';
   }
   if (state.owner !== 0) return 'HOLD TO CONTEST';
   if (state.handling[0] !== 'hold') return 'HOLD / RELEASE';

@@ -2,6 +2,7 @@ node_modules/
 dist/
 .cache/
 .vite/
+.vercel/
 .parcel-cache/
 .next/
 .nuxt/

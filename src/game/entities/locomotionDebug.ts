@@ -1,7 +1,19 @@
 import type { Locomotion } from './gait';
 import type { Posture, UpperBody } from './posture';
+import type { createImportedDefense } from './importedDefense';
+import type { createDefensiveArmContact } from './defensiveArmContact';
+import type { createImportedJump } from './importedJump';
 
 type Point = { x: number; y: number; z: number };
+export interface MovementRequest {
+  stick: { x: number; z: number };
+  worldVelocity: { x: number; z: number };
+  opponentRelative: { x: number; z: number } | null;
+  requestedYaw: number;
+  actualYaw: number;
+}
+/** Observations of the existing simulation, never consumed as control state. */
+export const movementRequests: (MovementRequest | null)[] = [null, null];
 
 /** Per-slot animation diagnostics written by Character each frame (tests + debug view). */
 export interface LocomotionSnapshot {
@@ -22,6 +34,11 @@ export interface LocomotionSnapshot {
   reachDrop: number;
   stride: number;
   grounded: boolean;
+  contact?: Omit<ReturnType<typeof createDefensiveArmContact>['debug'], 'target' | 'forearm'> & {
+    target: Point;
+    forearm: Point;
+  };
+  movement?: MovementRequest & { measuredVelocity: { x: number; z: number } };
   importedWalk?: {
     clip: string;
     source: string;
@@ -30,8 +47,21 @@ export interface LocomotionSnapshot {
     time: number;
     cycleDistance: number;
     applied: number;
+    appliedArms: number;
   };
-  feet: { planted: boolean; target: Point; neutral: Point; lift: number; yaw: number }[];
+  importedDefense?: ReturnType<typeof createImportedDefense>['debug'];
+  importedJump?: ReturnType<typeof createImportedJump>['debug'];
+  feet: {
+    planted: boolean;
+    target: Point;
+    neutral: Point;
+    lift: number;
+    yaw: number;
+    actual: Point;
+    targetError: number;
+    supportHeight: number;
+    slidingSpeed: number;
+  }[];
 }
 
 export const locomotionDebug: (LocomotionSnapshot | null)[] = [null, null];

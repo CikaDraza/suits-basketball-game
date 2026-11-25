@@ -1,8 +1,11 @@
 import type { Legend } from '../data/gameConfig';
+import type { DefensiveHands } from '../input/defensiveHands';
+import type { SmallJump } from './smallJump';
 import type { InboundPassPlan, InboundPassOutcome, PassPoint } from './tacticalPass';
 
 export type PlayerSlot = 0 | 1;
-export type BallState = 'held' | 'loose' | 'shot' | 'pass' | 'smash' | 'inbound' | 'scored';
+export type BallState =
+  'inactive' | 'held' | 'loose' | 'shot' | 'pass' | 'smash' | 'inbound' | 'scored';
 export type Mode =
   'idle' | 'post' | 'spin' | 'contest' | 'shoot' | 'down' | 'stun' | 'dunk' | 'exhausted';
 export type Handling = 'hold' | 'dribble';
@@ -21,11 +24,25 @@ export interface Fighter {
   vx: number;
   vz: number;
   hand: number;
-  lastQ: number;
+  defenseHands: DefensiveHands;
+  /** Explicit Q exit opts out of proximity guard until the next Q entry/reset. */
+  defenseReleased: boolean;
+  defensePushAt: number;
+  defensePushApplied: boolean;
+  defensePushCooldown: number;
+  lastChargePress: number;
+  prevChargeStance: boolean;
+  chargeStance: boolean;
+  fallBackward: boolean;
+  staggerUntil: number;
+  staggerYaw: number;
   lastR: number;
   taps: number;
   prevQ: boolean;
+  prevJump: boolean;
+  jump: SmallJump;
   prevR: boolean;
+  prevInbound: boolean;
   interceptUntil: number;
   prevX: number;
   aiClock: number;

@@ -22,6 +22,10 @@ sa identičnim stablom. Prethodni rad je sačuvan.
 
 ## DRIBBLE-1A — smer palice
 
+Aktuelnu matematiku smera dopunjava [RIGHT-STICK-RELATIVE-1](../right-stick-relative-1.md):
+jednaki sektori oko projektovanog pravca tela zamenjuju raniju inverznu projekciju sticka.
+Sledeći opis beleži prvobitnu implementaciju DRIBBLE-1.
+
 Četiri `SKILL_*` smera u postojećoj mapi daju jedan nezavisan 2D vektor. Ose se
 konfigurišu kroz postojeće Controls Settings; gameplay ne čita fiksne indekse.
 Primena radijalne mrtve zone zadržava dijagonale. Z/C, touch i posebno naučena
